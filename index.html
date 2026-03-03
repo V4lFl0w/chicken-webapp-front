@@ -38,11 +38,12 @@
         const shootSound = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3');
         const boomSound = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3');
 
-        // Функция для наложения звуков друг на друга (чтобы выстрелы не прерывались)
+        // Функция для оптимизированного проигрывания (без утечек памяти и лагов)
         function playSound(audioObj, vol = 0.5) {
-            let s = audioObj.cloneNode();
-            s.volume = vol;
-            s.play().catch(e => console.log("Audio play blocked", e));
+            audioObj.pause(); // Останавливаем текущее звучание
+            audioObj.currentTime = 0; // Перематываем в самое начало
+            audioObj.volume = vol;
+            audioObj.play().catch(e => {}); // Запускаем заново
         }
 
         // --- Игровые переменные ---
