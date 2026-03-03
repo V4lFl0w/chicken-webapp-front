@@ -23,15 +23,12 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // --- Загрузка картинок ---
+        // --- Загрузка картинок (с полными URL и защитой от кэша) ---
         const playerImg = new Image();
-        playerImg.src = '/game/ship.png?v=1'; // Жестко указываем путь
+        playerImg.src = 'https://coral-app-jxzy5.ondigitalocean.app/game/ship.png?v=3';
 
         const enemyImg = new Image();
-        enemyImg.src = '/game/diamond.png?v=1'; // Жестко указываем путь
-
-        const enemyImg = new Image();
-        enemyImg.src = 'diamond.png';
+        enemyImg.src = 'https://coral-app-jxzy5.ondigitalocean.app/game/diamond.png?v=3';
 
         // --- Игровые переменные ---
         let score = 0;
@@ -48,9 +45,8 @@
         let bullets = [];
         let enemies = [];
         let stars = [];
-        let particles = []; // Массив для анимаций взрывов и выхлопа
+        let particles = []; 
 
-        // Цвета звезд для эффекта глубины
         const starColors = ['#ffffff', '#aaddff', '#ffeedd'];
 
         for (let i = 0; i < 100; i++) {
@@ -67,15 +63,14 @@
         const shootDelay = 150; 
         let isTouching = false;
 
-        // --- Система частиц (Анимации) ---
         function createExplosion(x, y, color) {
             for (let i = 0; i < 15; i++) {
                 particles.push({
                     x: x, y: y,
-                    vx: (Math.random() - 0.5) * 8, // Разлет по X
-                    vy: (Math.random() - 0.5) * 8, // Разлет по Y
-                    life: 1.0, // Жизнь частицы
-                    decay: Math.random() * 0.03 + 0.02, // Скорость затухания
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 1.0,
+                    decay: Math.random() * 0.03 + 0.02,
                     color: color,
                     size: Math.random() * 4 + 2
                 });
@@ -87,10 +82,10 @@
                 x: x + (Math.random() - 0.5) * 10,
                 y: y,
                 vx: (Math.random() - 0.5) * 2,
-                vy: Math.random() * 5 + 2, // Летят вниз
+                vy: Math.random() * 5 + 2,
                 life: 1.0,
                 decay: 0.05,
-                color: '#ffaa00', // Огненный цвет
+                color: '#ffaa00',
                 size: Math.random() * 5 + 2
             });
         }
@@ -112,7 +107,6 @@
 
             globalSpeedMultiplier = 1 + Math.floor(score / 100) * 0.15;
 
-            // Звезды
             stars.forEach(s => {
                 s.y += s.speed * (globalSpeedMultiplier * 0.5);
                 if (s.y > canvas.height) {
@@ -121,10 +115,8 @@
                 }
             });
 
-            // Анимация выхлопа двигателя
             createEngineTrail(player.x + player.width / 2, player.y + player.height - 10);
 
-            // Обновление частиц
             for (let i = particles.length - 1; i >= 0; i--) {
                 let p = particles[i];
                 p.x += p.vx;
@@ -158,26 +150,24 @@
                 }
 
                 let hitPadding = 10;
-                // Враг бьет игрока
                 if (e.x + hitPadding < player.x + player.width - hitPadding && 
                     e.x + e.width - hitPadding > player.x + hitPadding &&
                     e.y + hitPadding < player.y + player.height - hitPadding && 
                     e.y + e.height - hitPadding > player.y + hitPadding) {
                     lives--;
                     hitEffectTimer = 10;
-                    createExplosion(player.x + player.width/2, player.y + player.height/2, '#00ffcc'); // Взрыв корабля
+                    createExplosion(player.x + player.width/2, player.y + player.height/2, '#00ffcc');
                     enemies.splice(i, 1);
                     if (lives <= 0) isGameOver = true;
                     continue;
                 }
 
-                // Пуля бьет врага
                 for (let j = bullets.length - 1; j >= 0; j--) {
                     let b = bullets[j];
                     if (b.x < e.x + e.width && b.x + b.width > e.x &&
                         b.y < e.y + e.height && b.y + b.height > e.y) {
                         score += 10;
-                        createExplosion(e.x + e.width/2, e.y + e.height/2, '#ff3366'); // Красный взрыв алмаза
+                        createExplosion(e.x + e.width/2, e.y + e.height/2, '#ff3366');
                         enemies.splice(i, 1);
                         bullets.splice(j, 1);
                         break; 
@@ -192,17 +182,15 @@
                     width: 6, height: 20,
                     speed: 12
                 });
-                player.y += 1; // Легкая отдача
+                player.y += 1;
                 lastShootTime = Date.now();
             }
         }
 
         function draw() {
-            // Темный фон с легким следом (эффект размытия движения)
             ctx.fillStyle = 'rgba(8, 8, 18, 0.6)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Отрисовка звезд
             stars.forEach(s => {
                 ctx.fillStyle = s.color;
                 ctx.globalAlpha = s.size / 3;
@@ -210,14 +198,12 @@
             });
             ctx.globalAlpha = 1.0;
 
-            // Красный экран при уроне
             if (hitEffectTimer > 0) {
                 ctx.fillStyle = `rgba(255, 0, 0, ${hitEffectTimer / 30})`;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 hitEffectTimer--;
             }
 
-            // Отрисовка частиц (Взрывы и шлейф)
             particles.forEach(p => {
                 ctx.fillStyle = p.color;
                 ctx.globalAlpha = Math.max(0, p.life);
@@ -230,7 +216,6 @@
             ctx.globalAlpha = 1.0;
             ctx.shadowBlur = 0;
 
-            // Отрисовка пуль
             ctx.fillStyle = '#ffff00';
             ctx.shadowBlur = 10;
             ctx.shadowColor = '#ffff00';
@@ -241,16 +226,26 @@
             });
             ctx.shadowBlur = 0;
 
-            // Отрисовка врагов и игрока (Картинки)
+            // БЕЗОПАСНАЯ ОТРИСОВКА ВРАГОВ
             enemies.forEach(e => {
-                ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height);
+                if (enemyImg.complete && enemyImg.naturalHeight !== 0) {
+                    ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height);
+                } else {
+                    ctx.fillStyle = '#ff3366'; // Красный квадрат, если грузится
+                    ctx.fillRect(e.x, e.y, e.width, e.height);
+                }
             });
-            // Рисуем корабль только если живы
+
+            // БЕЗОПАСНАЯ ОТРИСОВКА ИГРОКА
             if (!isGameOver || hitEffectTimer > 0) {
-                ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+                if (playerImg.complete && playerImg.naturalHeight !== 0) {
+                    ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+                } else {
+                    ctx.fillStyle = '#00ffcc'; // Бирюзовый квадрат, если грузится
+                    ctx.fillRect(player.x, player.y, player.width, player.height);
+                }
             }
 
-            // --- ИНТЕРФЕЙС ---
             ctx.fillStyle = '#ffffff';
             ctx.font = 'bold 24px Courier New';
             ctx.textAlign = 'left';
@@ -260,7 +255,6 @@
             let livesText = '❤️'.repeat(Math.max(0, lives));
             ctx.fillText(livesText, canvas.width - 20, 40);
 
-            // Экран GAME OVER
             if (isGameOver) {
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
