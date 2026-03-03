@@ -23,19 +23,35 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // --- Загрузка картинок (с полными URL и защитой от кэша) ---
+        // --- Загрузка картинок ---
         const playerImg = new Image();
         playerImg.src = 'https://coral-app-jxzy5.ondigitalocean.app/game/ship.png?v=3';
-
         const enemyImg = new Image();
         enemyImg.src = 'https://coral-app-jxzy5.ondigitalocean.app/game/diamond.png?v=3';
 
+        // --- Загрузка звуков ---
+        // Эти файлы нужно будет закинуть на GitHub
+        const bgMusic = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/bgm.mp3');
+        bgMusic.loop = true;
+        bgMusic.volume = 0.4;
+
+        const shootSound = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3');
+        const boomSound = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3');
+
+        // Функция для наложения звуков друг на друга (чтобы выстрелы не прерывались)
+        function playSound(audioObj, vol = 0.5) {
+            let s = audioObj.cloneNode();
+            s.volume = vol;
+            s.play().catch(e => console.log("Audio play blocked", e));
+        }
+
         // --- Игровые переменные ---
+        let gameState = 'MENU'; // 'MENU', 'PLAYING', 'GAME_OVER'
         let score = 0;
         let lives = 3;
-        let isGameOver = false;
         let hitEffectTimer = 0;
         let globalSpeedMultiplier = 1;
+        let menuPulseTimer = 0;
 
         const player = {
             width: 70, height: 70,
@@ -48,7 +64,6 @@
         let particles = []; 
 
         const starColors = ['#ffffff', '#aaddff', '#ffeedd'];
-
         for (let i = 0; i < 100; i++) {
             stars.push({
                 x: Math.random() * canvas.width,
@@ -64,74 +79,69 @@
         let isTouching = false;
 
         function createExplosion(x, y, color) {
+            playSound(boomSound, 0.6); // Звук взрыва
             for (let i = 0; i < 15; i++) {
                 particles.push({
                     x: x, y: y,
-                    vx: (Math.random() - 0.5) * 8,
-                    vy: (Math.random() - 0.5) * 8,
-                    life: 1.0,
-                    decay: Math.random() * 0.03 + 0.02,
-                    color: color,
-                    size: Math.random() * 4 + 2
+                    vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8,
+                    life: 1.0, decay: Math.random() * 0.03 + 0.02,
+                    color: color, size: Math.random() * 4 + 2
                 });
             }
         }
 
         function createEngineTrail(x, y) {
             particles.push({
-                x: x + (Math.random() - 0.5) * 10,
-                y: y,
-                vx: (Math.random() - 0.5) * 2,
-                vy: Math.random() * 5 + 2,
-                life: 1.0,
-                decay: 0.05,
-                color: '#ffaa00',
-                size: Math.random() * 5 + 2
+                x: x + (Math.random() - 0.5) * 10, y: y,
+                vx: (Math.random() - 0.5) * 2, vy: Math.random() * 5 + 2,
+                life: 1.0, decay: 0.05,
+                color: '#ffaa00', size: Math.random() * 5 + 2
             });
         }
 
         function resetGame() {
             score = 0;
             lives = 3;
-            isGameOver = false;
+            gameState = 'PLAYING';
             globalSpeedMultiplier = 1;
             bullets = [];
             enemies = [];
             particles = [];
             player.x = canvas.width / 2 - player.width / 2;
             player.y = canvas.height - 120;
+            
+            // Включаем музыку
+            bgMusic.play().catch(e => console.log(e));
         }
 
         function update() {
-            if (isGameOver) return;
+            menuPulseTimer += 0.05;
 
-            globalSpeedMultiplier = 1 + Math.floor(score / 100) * 0.15;
-
+            // Звезды летят всегда (даже в меню)
             stars.forEach(s => {
-                s.y += s.speed * (globalSpeedMultiplier * 0.5);
+                s.y += s.speed * (gameState === 'PLAYING' ? globalSpeedMultiplier * 0.5 : 0.2);
                 if (s.y > canvas.height) {
                     s.y = 0;
                     s.x = Math.random() * canvas.width;
                 }
             });
 
+            if (gameState !== 'PLAYING') return;
+
+            globalSpeedMultiplier = 1 + Math.floor(score / 100) * 0.15;
             createEngineTrail(player.x + player.width / 2, player.y + player.height - 10);
 
             for (let i = particles.length - 1; i >= 0; i--) {
                 let p = particles[i];
-                p.x += p.vx;
-                p.y += p.vy;
-                p.life -= p.decay;
+                p.x += p.vx; p.y += p.vy; p.life -= p.decay;
                 if (p.life <= 0) particles.splice(i, 1);
             }
 
             let spawnRate = 0.02 + (globalSpeedMultiplier * 0.005);
             if (Math.random() < spawnRate) {
                 enemies.push({
-                    x: Math.random() * (canvas.width - 50),
-                    y: -50,
-                    width: 50, height: 50,
-                    speed: (2 + Math.random() * 3) * globalSpeedMultiplier
+                    x: Math.random() * (canvas.width - 50), y: -50,
+                    width: 50, height: 50, speed: (2 + Math.random() * 3) * globalSpeedMultiplier
                 });
             }
 
@@ -143,29 +153,25 @@
             for (let i = enemies.length - 1; i >= 0; i--) {
                 let e = enemies[i];
                 e.y += e.speed;
-                
-                if (e.y > canvas.height) {
-                    enemies.splice(i, 1);
-                    continue;
-                }
+                if (e.y > canvas.height) { enemies.splice(i, 1); continue; }
 
                 let hitPadding = 10;
-                if (e.x + hitPadding < player.x + player.width - hitPadding && 
-                    e.x + e.width - hitPadding > player.x + hitPadding &&
-                    e.y + hitPadding < player.y + player.height - hitPadding && 
-                    e.y + e.height - hitPadding > player.y + hitPadding) {
+                if (e.x + hitPadding < player.x + player.width - hitPadding && e.x + e.width - hitPadding > player.x + hitPadding &&
+                    e.y + hitPadding < player.y + player.height - hitPadding && e.y + e.height - hitPadding > player.y + hitPadding) {
                     lives--;
                     hitEffectTimer = 10;
                     createExplosion(player.x + player.width/2, player.y + player.height/2, '#00ffcc');
                     enemies.splice(i, 1);
-                    if (lives <= 0) isGameOver = true;
+                    if (lives <= 0) {
+                        gameState = 'GAME_OVER';
+                        bgMusic.pause(); // Тормозим музыку при смерти
+                    }
                     continue;
                 }
 
                 for (let j = bullets.length - 1; j >= 0; j--) {
                     let b = bullets[j];
-                    if (b.x < e.x + e.width && b.x + b.width > e.x &&
-                        b.y < e.y + e.height && b.y + b.height > e.y) {
+                    if (b.x < e.x + e.width && b.x + b.width > e.x && b.y < e.y + e.height && b.y + b.height > e.y) {
                         score += 10;
                         createExplosion(e.x + e.width/2, e.y + e.height/2, '#ff3366');
                         enemies.splice(i, 1);
@@ -177,11 +183,10 @@
 
             if (isTouching && Date.now() - lastShootTime > shootDelay) {
                 bullets.push({
-                    x: player.x + player.width / 2 - 3,
-                    y: player.y + 10,
-                    width: 6, height: 20,
-                    speed: 12
+                    x: player.x + player.width / 2 - 3, y: player.y + 10,
+                    width: 6, height: 20, speed: 12
                 });
+                playSound(shootSound, 0.2); // Звук выстрела
                 player.y += 1;
                 lastShootTime = Date.now();
             }
@@ -192,82 +197,75 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             stars.forEach(s => {
-                ctx.fillStyle = s.color;
-                ctx.globalAlpha = s.size / 3;
+                ctx.fillStyle = s.color; ctx.globalAlpha = s.size / 3;
                 ctx.fillRect(s.x, s.y, s.size, s.size);
             });
             ctx.globalAlpha = 1.0;
 
-            if (hitEffectTimer > 0) {
-                ctx.fillStyle = `rgba(255, 0, 0, ${hitEffectTimer / 30})`;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                hitEffectTimer--;
-            }
-
-            particles.forEach(p => {
-                ctx.fillStyle = p.color;
-                ctx.globalAlpha = Math.max(0, p.life);
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = p.color;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-            });
-            ctx.globalAlpha = 1.0;
-            ctx.shadowBlur = 0;
-
-            ctx.fillStyle = '#ffff00';
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = '#ffff00';
-            bullets.forEach(b => {
-                ctx.beginPath();
-                ctx.roundRect(b.x, b.y, b.width, b.height, 3);
-                ctx.fill();
-            });
-            ctx.shadowBlur = 0;
-
-            // БЕЗОПАСНАЯ ОТРИСОВКА ВРАГОВ
-            enemies.forEach(e => {
-                if (enemyImg.complete && enemyImg.naturalHeight !== 0) {
-                    ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height);
-                } else {
-                    ctx.fillStyle = '#ff3366'; // Красный квадрат, если грузится
-                    ctx.fillRect(e.x, e.y, e.width, e.height);
-                }
-            });
-
-            // БЕЗОПАСНАЯ ОТРИСОВКА ИГРОКА
-            if (!isGameOver || hitEffectTimer > 0) {
-                if (playerImg.complete && playerImg.naturalHeight !== 0) {
-                    ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
-                } else {
-                    ctx.fillStyle = '#00ffcc'; // Бирюзовый квадрат, если грузится
-                    ctx.fillRect(player.x, player.y, player.width, player.height);
-                }
-            }
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 24px Courier New';
-            ctx.textAlign = 'left';
-            ctx.fillText(`SCORE: ${score}`, 20, 40);
-            
-            ctx.textAlign = 'right';
-            let livesText = '❤️'.repeat(Math.max(0, lives));
-            ctx.fillText(livesText, canvas.width - 20, 40);
-
-            if (isGameOver) {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#ff3366';
+            if (gameState === 'MENU') {
+                // --- ГЛАВНОЕ МЕНЮ ---
+                ctx.fillStyle = '#ffcc00';
                 ctx.textAlign = 'center';
-                ctx.font = 'bold 48px Courier New';
-                ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 24px Courier New';
-                ctx.fillText(`Счет: ${score}`, canvas.width / 2, canvas.height / 2 + 30);
-                ctx.font = '18px Courier New';
+                ctx.font = 'bold 42px Courier New';
+                ctx.fillText('FLY INVADERS', canvas.width / 2, canvas.height / 3);
+                
+                // Пульсирующая кнопка играть
+                ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer));
                 ctx.fillStyle = '#00ffcc';
-                ctx.fillText('Тапни, чтобы начать заново', canvas.width / 2, canvas.height / 2 + 80);
+                ctx.font = 'bold 24px Courier New';
+                ctx.fillText('>>> ТАПНИ ДЛЯ СТАРТА <<<', canvas.width / 2, canvas.height / 2);
+                ctx.globalAlpha = 1.0;
+
+                ctx.fillStyle = '#666666'; // Серый цвет для неактивных кнопок
+                ctx.font = '18px Courier New';
+                ctx.fillText('[ МАГАЗИН - Скоро ]', canvas.width / 2, canvas.height / 2 + 80);
+                ctx.fillText('[ ТОП ИГРОКОВ - Скоро ]', canvas.width / 2, canvas.height / 2 + 130);
+            } 
+            else if (gameState === 'PLAYING' || gameState === 'GAME_OVER') {
+                // --- ОТРИСОВКА ИГРЫ ---
+                if (hitEffectTimer > 0) {
+                    ctx.fillStyle = `rgba(255, 0, 0, ${hitEffectTimer / 30})`;
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    hitEffectTimer--;
+                }
+
+                particles.forEach(p => {
+                    ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life);
+                    ctx.shadowBlur = 10; ctx.shadowColor = p.color;
+                    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+                });
+                ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
+
+                ctx.fillStyle = '#ffff00'; ctx.shadowBlur = 10; ctx.shadowColor = '#ffff00';
+                bullets.forEach(b => {
+                    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.width, b.height, 3); ctx.fill();
+                });
+                ctx.shadowBlur = 0;
+
+                enemies.forEach(e => {
+                    if (enemyImg.complete && enemyImg.naturalHeight !== 0) ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height);
+                });
+
+                if (gameState === 'PLAYING' || hitEffectTimer > 0) {
+                    if (playerImg.complete && playerImg.naturalHeight !== 0) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+                }
+
+                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Courier New'; ctx.textAlign = 'left';
+                ctx.fillText(`SCORE: ${score}`, 20, 40);
+                
+                ctx.textAlign = 'right';
+                ctx.fillText('❤️'.repeat(Math.max(0, lives)), canvas.width - 20, 40);
+
+                if (gameState === 'GAME_OVER') {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Courier New';
+                    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
+                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Courier New';
+                    ctx.fillText(`Счет: ${score}`, canvas.width / 2, canvas.height / 2 + 30);
+                    ctx.font = '18px Courier New'; ctx.fillStyle = '#00ffcc';
+                    ctx.fillText('Тапни, чтобы выйти в меню', canvas.width / 2, canvas.height / 2 + 80);
+                }
             }
 
             update();
@@ -275,8 +273,12 @@
         }
 
         canvas.addEventListener('touchstart', (e) => {
-            if (isGameOver) {
+            if (gameState === 'MENU') {
                 resetGame();
+                return;
+            }
+            if (gameState === 'GAME_OVER') {
+                gameState = 'MENU'; // Возврат в меню после смерти
                 return;
             }
             isTouching = true;
@@ -289,7 +291,7 @@
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            if (isGameOver) return;
+            if (gameState !== 'PLAYING') return;
             const touch = e.touches[0];
             player.x = touch.clientX - player.width / 2;
             player.y = touch.clientY - player.height / 2;
