@@ -23,6 +23,7 @@
 
         async function sendScoreToDatabase(finalScore) {
             try {
+                // В будущем сюда же добавим отправку собранных монет
                 await fetch(`${BACKEND_URL}/save_score`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -43,7 +44,6 @@
         // --- ЗВУК И НАСТРОЙКИ ---
         let isMusicMuted = false;
         let isSfxMuted = false;
-
         let audioCtx;
         const sfxBuffers = {};
 
@@ -76,87 +76,83 @@
         }
 
         const bgMusic = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/bgm.mp3');
-        bgMusic.loop = true;
-        bgMusic.volume = 0.5; // Музыка качает
+        bgMusic.loop = true; bgMusic.volume = 0.5;
 
-        function toggleMusic() {
-            isMusicMuted = !isMusicMuted;
-            bgMusic.volume = isMusicMuted ? 0 : 0.5;
-        }
+        // UI Кнопки звука (Переместили влево под счет)
+        const btnMusic = { x: 15, y: 75, w: 35, h: 35 };
+        const btnSfx = { x: 60, y: 75, w: 35, h: 35 };
 
         // --- ПЕРЕМЕННЫЕ ИГРЫ ---
-        let gameState = 'MENU'; // MENU, PLAYING, LEVEL_TRANSITION, GAME_OVER, SHOP
+        let gameState = 'MENU'; 
         let score = 0;
+        let coins = 0; // ВАЛЮТА
         let lives = 3;
         let level = 1;
-        let nextJumpScore = 500;
+        let nextJumpScore = 1000; // Растянули уровни
         
-        // Прокачка
         let weaponLevel = 1; 
-        let hasHelper = false;
-        let helperAngle = 0;
-
-        let hitEffectTimer = 0;
-        let transitionTimer = 0;
-        let menuPulseTimer = 0;
+        let hasHelper = false; let helperAngle = 0;
+        let hitEffectTimer = 0; let transitionTimer = 0; let menuPulseTimer = 0;
+        let coinAnimTimer = 0;
 
         const player = { width: 70, height: 70, x: canvas.width / 2 - 35, y: canvas.height - 120 };
 
-        let bullets = [];
-        let enemyBullets = []; // Снаряды врагов
-        let enemies = [];
-        let stars = [];
-        let particles = []; 
-        let powerups = []; // Плюшки
+        let bullets = []; let enemyBullets = []; let enemies = [];
+        let stars = []; let particles = []; let powerups = []; let collectibles = [];
+        
+        // БОСС
+        let boss = null; 
 
-        // UI Кнопки
-        const btnMusic = { x: canvas.width - 100, y: 15, w: 35, h: 35 };
-        const btnSfx = { x: canvas.width - 50, y: 15, w: 35, h: 35 };
-
-        // Звезды
-        const starColors = ['#ffffff', '#aaddff', '#446688'];
         for (let i = 0; i < 120; i++) {
-            stars.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: Math.random() * 2.5 + 0.5, speed: Math.random() * 2 + 0.2, color: starColors[Math.floor(Math.random() * starColors.length)] });
+            stars.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: Math.random() * 2.5 + 0.5, speed: Math.random() * 2 + 0.2, color: ['#ffffff', '#aaddff', '#446688'][Math.floor(Math.random() * 3)] });
         }
         
-        let lastShootTime = 0;
-        const shootDelay = 150; 
-        let isTouching = false;
+        let lastShootTime = 0; const shootDelay = 150; let isTouching = false;
 
-        function createExplosion(x, y, color) {
-            playSFX('boom', 0.1); 
-            for (let i = 0; i < 20; i++) particles.push({ x: x, y: y, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10, life: 1.0, decay: Math.random() * 0.03 + 0.02, color: color, size: Math.random() * 5 + 2 });
+        function createExplosion(x, y, color, sizeMultiplier = 1) {
+            playSFX('boom', 0.25); // Громкость взрыва выше
+            for (let i = 0; i < 25 * sizeMultiplier; i++) particles.push({ x: x, y: y, vx: (Math.random() - 0.5) * 12 * sizeMultiplier, vy: (Math.random() - 0.5) * 12 * sizeMultiplier, life: 1.0, decay: Math.random() * 0.03 + 0.02, color: color, size: Math.random() * 5 * sizeMultiplier + 2 });
         }
 
         function createEngineTrail(x, y, isHyper = false) {
             particles.push({ x: x + (Math.random() - 0.5) * 12, y: y, vx: (Math.random() - 0.5) * (isHyper ? 4 : 2), vy: Math.random() * (isHyper ? 15 : 6) + 3, life: 1.0, decay: isHyper ? 0.03 : 0.06, color: isHyper ? '#ffffff' : '#00ccff', size: Math.random() * (isHyper ? 6 : 4) + 1 });
         }
 
+        function spawnBoss() {
+            boss = {
+                x: canvas.width / 2 - 60, y: -150, width: 120, height: 120,
+                hp: 100 + (level * 20), maxHp: 100 + (level * 20),
+                speedX: 2, speedY: 1, state: 'entering',
+                shootTimer: 0
+            };
+        }
+
         function resetGame() {
-            score = 0; lives = 3; level = 1; nextJumpScore = 500;
-            weaponLevel = 1; hasHelper = false;
+            score = 0; lives = 3; level = 1; nextJumpScore = 1000;
+            weaponLevel = 1; hasHelper = false; boss = null;
             gameState = 'PLAYING';
-            bullets = []; enemyBullets = []; enemies = []; particles = []; powerups = [];
+            bullets = []; enemyBullets = []; enemies = []; particles = []; powerups = []; collectibles = [];
             player.x = canvas.width / 2 - player.width / 2; player.y = canvas.height - 120;
             if (!isMusicMuted) bgMusic.play().catch(() => {});
         }
 
-        function spawnPowerup(x, y) {
-            if (Math.random() < 0.1) { // 10% шанс дропа
-                let type = Math.random() > 0.5 ? 'weapon' : 'helper';
-                powerups.push({ x: x, y: y, size: 20, type: type, speed: 2 });
+        function spawnLoot(x, y) {
+            let rand = Math.random();
+            if (rand < 0.3) { // 30% шанс на монету
+                collectibles.push({ x: x, y: y, size: 15, type: 'coin', speed: 3 });
+            } else if (rand < 0.4) { // 10% шанс на улучшение (если не выпала монета)
+                powerups.push({ x: x, y: y, size: 20, type: Math.random() > 0.5 ? 'weapon' : 'helper', speed: 2 });
             }
         }
 
         function update() {
-            menuPulseTimer += 0.05;
-            helperAngle += 0.1;
+            menuPulseTimer += 0.05; helperAngle += 0.1; coinAnimTimer += 0.15;
 
             if (gameState === 'LEVEL_TRANSITION') {
                 transitionTimer++;
                 stars.forEach(s => { s.y += s.speed * 15; if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; } });
                 if (transitionTimer < 60) { player.y -= 10; createEngineTrail(player.x + player.width / 2, player.y + player.height, true); } 
-                else if (transitionTimer === 90) { level++; nextJumpScore = level * 500; player.y = canvas.height + 100; } 
+                else if (transitionTimer === 90) { level++; nextJumpScore = level * 1000; player.y = canvas.height + 100; } 
                 else if (transitionTimer > 90 && transitionTimer < 130) { player.y -= 5; createEngineTrail(player.x + player.width / 2, player.y + player.height, false); } 
                 else if (transitionTimer >= 130) { gameState = 'PLAYING'; player.y = canvas.height - 120; }
                 for (let i = particles.length - 1; i >= 0; i--) { let p = particles[i]; p.x += p.vx; p.y += p.vy; p.life -= p.decay; if (p.life <= 0) particles.splice(i, 1); }
@@ -168,41 +164,75 @@
 
             if (gameState !== 'PLAYING') return;
 
-            // Прыжок
-            if (score >= nextJumpScore && enemies.length === 0) {
-                gameState = 'LEVEL_TRANSITION'; transitionTimer = 0; bullets = []; enemyBullets = []; powerups = []; return;
+            // ПРОВЕРКА ПРЫЖКА
+            if (score >= nextJumpScore && enemies.length === 0 && !boss) {
+                // Если каждый 5й уровень - спавним босса вместо прыжка
+                if (level % 5 === 0 && score === nextJumpScore) {
+                    spawnBoss();
+                    nextJumpScore += 99999; // Блокируем прыжок пока жив босс
+                } else {
+                    gameState = 'LEVEL_TRANSITION'; transitionTimer = 0; bullets = []; enemyBullets = []; powerups = []; collectibles = []; return;
+                }
             }
 
             createEngineTrail(player.x + player.width / 2, player.y + player.height - 10, false);
             for (let i = particles.length - 1; i >= 0; i--) { let p = particles[i]; p.x += p.vx; p.y += p.vy; p.life -= p.decay; if (p.life <= 0) particles.splice(i, 1); }
 
-            // СПАВН ВРАГОВ
-            if (score < nextJumpScore) {
-                let spawnRate = 0.02 + (level * 0.008);
+            // БОСС ЛОГИКА
+            if (boss) {
+                if (boss.state === 'entering') {
+                    boss.y += boss.speedY; if (boss.y >= 50) boss.state = 'fighting';
+                } else {
+                    boss.x += boss.speedX;
+                    if (boss.x <= 0 || boss.x + boss.width >= canvas.width) boss.speedX *= -1;
+                    
+                    boss.shootTimer++;
+                    if (boss.shootTimer > 60 - (level*2)) { // Босс стреляет веером
+                        enemyBullets.push({ x: boss.x + boss.width/2, y: boss.y + boss.height, width: 8, height: 15, speed: 7, vx: -2 });
+                        enemyBullets.push({ x: boss.x + boss.width/2, y: boss.y + boss.height, width: 8, height: 15, speed: 7, vx: 0 });
+                        enemyBullets.push({ x: boss.x + boss.width/2, y: boss.y + boss.height, width: 8, height: 15, speed: 7, vx: 2 });
+                        boss.shootTimer = 0;
+                    }
+                }
+            } else if (score < nextJumpScore) {
+                // СПАВН ОБЫЧНЫХ ВРАГОВ
+                let spawnRate = 0.015 + (level * 0.005);
                 if (Math.random() < spawnRate) {
-                    // Чем выше уровень, тем больше шанс появления "стрелка"
                     let isShooter = level >= 2 && Math.random() < 0.4;
-                    enemies.push({
-                        x: Math.random() * (canvas.width - 50), y: -50,
-                        width: 50, height: 50, 
-                        speed: (2 + Math.random() * 2) + (level * 0.5), 
-                        type: isShooter ? 'shooter' : 'kamikaze',
-                        targetY: 50 + Math.random() * 150, // Для стрелков - высота зависания
-                        wiggleOffset: Math.random() * Math.PI * 2,
-                        shootTimer: 0
-                    });
+                    enemies.push({ x: Math.random() * (canvas.width - 50), y: -50, width: 50, height: 50, speed: (2 + Math.random() * 2) + (level * 0.4), type: isShooter ? 'shooter' : 'kamikaze', targetY: 50 + Math.random() * 150, wiggleOffset: Math.random() * Math.PI * 2, shootTimer: 0 });
                 }
             }
 
-            // ПУЛИ ИГРОКА
+            // ПУЛИ ИГРОКА И ПОПАДАНИЯ В БОССА
             for (let i = bullets.length - 1; i >= 0; i--) {
-                bullets[i].y -= bullets[i].speed; if (bullets[i].y < 0) bullets.splice(i, 1);
+                bullets[i].y -= bullets[i].speed; 
+                
+                if (boss && boss.state === 'fighting') {
+                    let b = bullets[i];
+                    if (b.x < boss.x + boss.width && b.x + b.width > boss.x && b.y < boss.y + boss.height && b.y + b.height > boss.y) {
+                        boss.hp -= weaponLevel; // Урон зависит от пушки
+                        createExplosion(b.x, b.y, '#ffaa00', 0.5);
+                        bullets.splice(i, 1);
+                        
+                        if (boss.hp <= 0) { // БОСС УБИТ
+                            createExplosion(boss.x + boss.width/2, boss.y + boss.height/2, '#ff0000', 3);
+                            score += 2000;
+                            for(let c=0; c<15; c++) spawnLoot(boss.x + Math.random()*boss.width, boss.y + Math.random()*boss.height); // Лут с босса
+                            boss = null;
+                            nextJumpScore = score; // Запускаем прыжок на следующем кадре
+                        }
+                        continue;
+                    }
+                }
+                
+                if (bullets[i] && bullets[i].y < 0) bullets.splice(i, 1);
             }
 
             // ПУЛИ ВРАГОВ
             for (let i = enemyBullets.length - 1; i >= 0; i--) {
                 enemyBullets[i].y += enemyBullets[i].speed;
-                // Коллизия пули врага с игроком
+                if (enemyBullets[i].vx) enemyBullets[i].x += enemyBullets[i].vx; // Для веерной стрельбы
+                
                 if (enemyBullets[i].x < player.x + player.width && enemyBullets[i].x + enemyBullets[i].width > player.x &&
                     enemyBullets[i].y < player.y + player.height && enemyBullets[i].y + enemyBullets[i].height > player.y) {
                     lives--; hitEffectTimer = 15;
@@ -214,98 +244,92 @@
                 if (enemyBullets[i].y > canvas.height) enemyBullets.splice(i, 1);
             }
 
-            // ПЛЮШКИ (ПАДЕНИЕ И СБОР)
+            // МОНЕТЫ И ПЛЮШКИ (СБОР)
+            for (let i = collectibles.length - 1; i >= 0; i--) {
+                let c = collectibles[i]; c.y += c.speed;
+                if (c.x < player.x + player.width && c.x + c.size > player.x && c.y < player.y + player.height && c.y + c.size > player.y) {
+                    coins++; playSFX('shoot', 0.2); // Звук монеты
+                    collectibles.splice(i, 1); continue;
+                }
+                if (c.y > canvas.height) collectibles.splice(i, 1);
+            }
+
             for (let i = powerups.length - 1; i >= 0; i--) {
-                let p = powerups[i];
-                p.y += p.speed;
+                let p = powerups[i]; p.y += p.speed;
                 if (p.x < player.x + player.width && p.x + p.size > player.x && p.y < player.y + player.height && p.y + p.size > player.y) {
-                    // Подобрали
-                    if (p.type === 'weapon' && weaponLevel < 3) weaponLevel++;
+                    if (p.type === 'weapon' && weaponLevel < 5) weaponLevel++; // Прокачка до 5
                     if (p.type === 'helper') hasHelper = true;
-                    playSFX('shoot', 0.1); // Звук подбора
-                    powerups.splice(i, 1);
-                    score += 50; // Бонус за подбор
-                    continue;
+                    playSFX('shoot', 0.15); powerups.splice(i, 1); score += 50; continue;
                 }
                 if (p.y > canvas.height) powerups.splice(i, 1);
             }
 
-            // ЛОГИКА ВРАГОВ
+            // ЛОГИКА ВРАГОВ (ОБЫЧНЫЕ)
             for (let i = enemies.length - 1; i >= 0; i--) {
                 let e = enemies[i];
-                
                 if (e.type === 'kamikaze') {
-                    e.y += e.speed;
-                    e.x += Math.sin((e.y / 50) + e.wiggleOffset) * (level * 0.4);
+                    e.y += e.speed; e.x += Math.sin((e.y / 50) + e.wiggleOffset) * (level * 0.4);
                 } else if (e.type === 'shooter') {
-                    // Зависает и двигается по горизонтали
                     if (e.y < e.targetY) e.y += e.speed;
                     else {
-                        e.x += Math.sin(Date.now() / 500 + e.wiggleOffset) * 2;
-                        e.shootTimer++;
-                        if (e.shootTimer > 100 - (level * 5)) { // Стреляет
+                        e.x += Math.sin(Date.now() / 500 + e.wiggleOffset) * 2; e.shootTimer++;
+                        if (e.shootTimer > 100 - (level * 5)) {
                             enemyBullets.push({ x: e.x + e.width/2 - 3, y: e.y + e.height, width: 6, height: 15, speed: 6 + level });
                             e.shootTimer = 0;
                         }
                     }
                 }
-
                 if (e.x < 0) e.x = 0; if (e.x + e.width > canvas.width) e.x = canvas.width - e.width;
-
-                // Враг улетел
                 if (e.y > canvas.height) { enemies.splice(i, 1); continue; }
 
-                // Враг врезался в игрока
                 let hitPadding = 12;
                 if (e.x + hitPadding < player.x + player.width - hitPadding && e.x + e.width - hitPadding > player.x + hitPadding &&
                     e.y + hitPadding < player.y + player.height - hitPadding && e.y + e.height - hitPadding > player.y + hitPadding) {
-                    lives--; hitEffectTimer = 15;
-                    createExplosion(player.x + player.width/2, player.y + player.height/2, '#00ffcc');
+                    lives--; hitEffectTimer = 15; createExplosion(player.x + player.width/2, player.y + player.height/2, '#00ffcc');
                     enemies.splice(i, 1);
                     if (lives <= 0) { gameState = 'GAME_OVER'; bgMusic.pause(); sendScoreToDatabase(score); }
                     continue;
                 }
 
-                // Пуля игрока попала во врага
                 let enemyHit = false;
                 for (let j = bullets.length - 1; j >= 0; j--) {
                     let b = bullets[j];
                     if (b.x < e.x + e.width && b.x + b.width > e.x && b.y < e.y + e.height && b.y + b.height > e.y) {
-                        score += 10;
-                        createExplosion(e.x + e.width/2, e.y + e.height/2, '#ffcc00');
-                        spawnPowerup(e.x + e.width/2, e.y + e.height/2); // Шанс дропа
-                        enemies.splice(i, 1);
-                        bullets.splice(j, 1);
-                        enemyHit = true; break; 
+                        score += 10; createExplosion(e.x + e.width/2, e.y + e.height/2, '#ffcc00');
+                        spawnLoot(e.x + e.width/2, e.y + e.height/2); 
+                        enemies.splice(i, 1); bullets.splice(j, 1); enemyHit = true; break; 
                     }
                 }
                 if (enemyHit) continue;
             }
 
-            // СТРЕЛЬБА ИГРОКА И ДРОНА
+            // СТРЕЛЬБА ИГРОКА
             if (isTouching && Date.now() - lastShootTime > shootDelay) {
                 if (weaponLevel === 1) {
                     bullets.push({ x: player.x + player.width / 2 - 3, y: player.y, width: 6, height: 20, speed: 12, color: '#ffff00' });
                 } else if (weaponLevel === 2) {
                     bullets.push({ x: player.x + 10, y: player.y + 10, width: 5, height: 20, speed: 14, color: '#ffff00' });
                     bullets.push({ x: player.x + player.width - 15, y: player.y + 10, width: 5, height: 20, speed: 14, color: '#ffff00' });
-                } else if (weaponLevel >= 3) {
-                    // Тройной зеленый лазер
+                } else if (weaponLevel === 3) {
                     bullets.push({ x: player.x + player.width / 2 - 4, y: player.y - 10, width: 8, height: 25, speed: 16, color: '#00ff00' });
                     bullets.push({ x: player.x, y: player.y + 10, width: 4, height: 20, speed: 14, color: '#00ff00' });
                     bullets.push({ x: player.x + player.width - 4, y: player.y + 10, width: 4, height: 20, speed: 14, color: '#00ff00' });
+                } else if (weaponLevel === 4) {
+                    bullets.push({ x: player.x - 10, y: player.y + 20, width: 4, height: 20, speed: 14, color: '#00ffff' });
+                    bullets.push({ x: player.x + 10, y: player.y, width: 6, height: 25, speed: 16, color: '#00ffff' });
+                    bullets.push({ x: player.x + player.width - 16, y: player.y, width: 6, height: 25, speed: 16, color: '#00ffff' });
+                    bullets.push({ x: player.x + player.width + 6, y: player.y + 20, width: 4, height: 20, speed: 14, color: '#00ffff' });
+                } else if (weaponLevel >= 5) {
+                    bullets.push({ x: player.x + player.width / 2 - 10, y: player.y - 20, width: 20, height: 40, speed: 20, color: '#ff00ff' }); // Плазма
                 }
 
-                // Стрельба дрона
                 if (hasHelper) {
-                    let hx = player.x + player.width/2 + Math.cos(helperAngle) * 60;
-                    let hy = player.y + player.height/2 + Math.sin(helperAngle) * 60;
-                    bullets.push({ x: hx, y: hy, width: 4, height: 15, speed: 10, color: '#00ffff' });
+                    let hx = player.x + player.width/2 + Math.cos(helperAngle) * 60; let hy = player.y + player.height/2 + Math.sin(helperAngle) * 60;
+                    bullets.push({ x: hx, y: hy, width: 4, height: 15, speed: 10, color: '#ffcc00' });
                 }
                 
-                playSFX('shoot', 0.02); // Выстрел игрока - очень тихий
-                player.y += 1; 
-                lastShootTime = Date.now();
+                playSFX('shoot', 0.08); // Звук выстрела чуть громче
+                player.y += 1; lastShootTime = Date.now();
             }
         }
 
@@ -313,7 +337,6 @@
             ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
             ctx.beginPath(); ctx.roundRect(btnMusic.x, btnMusic.y, btnMusic.w, btnMusic.h, 5); ctx.fill();
             ctx.beginPath(); ctx.roundRect(btnSfx.x, btnSfx.y, btnSfx.w, btnSfx.h, 5); ctx.fill();
-            
             ctx.fillStyle = '#ffffff'; ctx.font = '20px Arial'; ctx.textAlign = 'center';
             ctx.fillText(isMusicMuted ? '🔇' : '🎵', btnMusic.x + 17, btnMusic.y + 25);
             ctx.fillText(isSfxMuted ? '🔇' : '🔊', btnSfx.x + 17, btnSfx.y + 25);
@@ -321,6 +344,7 @@
 
         function draw() {
             let bgR = Math.min(20 + level * 8, 80); let bgB = Math.max(15 - level * 2, 0);
+            if (boss) { bgR = 100; bgB = 0; } // Красный фон на боссе
             ctx.fillStyle = `rgba(${bgR}, 5, ${bgB}, 0.8)`; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             stars.forEach(s => { ctx.fillStyle = s.color; ctx.globalAlpha = s.size / 3; if (gameState === 'LEVEL_TRANSITION') ctx.globalAlpha = 1.0; ctx.fillRect(s.x, s.y, s.size, s.size * (gameState === 'LEVEL_TRANSITION' ? 5 : 1)); });
@@ -331,25 +355,23 @@
                 ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer)); ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 24px Courier New'; ctx.fillText('>>> ИГРАТЬ <<<', canvas.width / 2, canvas.height / 2);
                 ctx.globalAlpha = 1.0;
                 
-                // Кнопка Магазин
-                ctx.fillStyle = '#ff3366'; ctx.font = 'bold 24px Courier New';
-                ctx.fillText('[ МАГАЗИН ]', canvas.width / 2, canvas.height / 2 + 80);
-                
+                ctx.fillStyle = '#ff3366'; ctx.font = 'bold 24px Courier New'; ctx.fillText('[ МАГАЗИН ]', canvas.width / 2, canvas.height / 2 + 80);
                 ctx.fillStyle = '#666666'; ctx.font = '18px Courier New'; ctx.fillText('[ ТОП ИГРОКОВ - Скоро ]', canvas.width / 2, canvas.height / 2 + 130);
                 drawUIButtons();
             } 
             else if (gameState === 'SHOP') {
                 ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = 'bold 36px Courier New'; ctx.fillText('МАГАЗИН', canvas.width / 2, 80);
                 
-                // Заглушки товаров
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right'; ctx.font = 'bold 20px Courier New';
+                ctx.fillText(`Твой банк: ${coins} 🪙`, canvas.width - 20, 40); // Монеты в магазине
+
                 ctx.fillStyle = '#333'; ctx.fillRect(20, 120, canvas.width - 40, 80);
                 ctx.fillStyle = '#00ffcc'; ctx.font = '18px Courier New'; ctx.textAlign = 'left';
                 ctx.fillText('🚀 Скин: Неон', 40, 150); ctx.fillText('Цена: 1000 🪙', 40, 180);
 
                 ctx.fillStyle = '#333'; ctx.fillRect(20, 220, canvas.width - 40, 80);
-                ctx.fillStyle = '#ffcc00'; ctx.fillText('💥 Супер-Дрон', 40, 250); ctx.fillText('Цена: 2500 🪙', 40, 280);
+                ctx.fillStyle = '#ffcc00'; ctx.fillText('💥 Старт 3 ур. пушки', 40, 250); ctx.fillText('Цена: 2500 🪙', 40, 280);
 
-                // Кнопка Назад
                 ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 24px Courier New';
                 ctx.fillText('<<< НАЗАД', canvas.width / 2, canvas.height - 50);
                 drawUIButtons();
@@ -360,44 +382,56 @@
                 particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life); ctx.shadowBlur = 15; ctx.shadowColor = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); });
                 ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
 
-                // Отрисовка Плюшек
+                // Отрисовка Монет
+                collectibles.forEach(c => {
+                    ctx.fillStyle = '#ffcc00'; ctx.shadowBlur = 10; ctx.shadowColor = '#ffcc00';
+                    let squish = Math.sin(coinAnimTimer) * c.size/2; // Анимация вращения
+                    ctx.beginPath(); ctx.ellipse(c.x + c.size/2, c.y + c.size/2, Math.abs(squish) + 2, c.size/2, 0, 0, Math.PI*2); ctx.fill();
+                });
+
                 powerups.forEach(p => {
-                    ctx.fillStyle = p.type === 'weapon' ? '#00ffcc' : '#ffcc00';
-                    ctx.shadowBlur = 10; ctx.shadowColor = ctx.fillStyle;
+                    ctx.fillStyle = p.type === 'weapon' ? '#00ffcc' : '#ffcc00'; ctx.shadowBlur = 10; ctx.shadowColor = ctx.fillStyle;
                     ctx.beginPath(); ctx.arc(p.x + p.size/2, p.y + p.size/2, p.size/2, 0, Math.PI*2); ctx.fill();
-                    ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
-                    ctx.fillText(p.type === 'weapon' ? 'W' : 'H', p.x + p.size/2, p.y + p.size/2 + 4);
+                    ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center'; ctx.fillText(p.type === 'weapon' ? 'W' : 'H', p.x + p.size/2, p.y + p.size/2 + 4);
                 });
                 ctx.shadowBlur = 0;
 
-                // Пули игрока
                 bullets.forEach(b => { ctx.fillStyle = b.color; ctx.shadowBlur = 10; ctx.shadowColor = b.color; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.width, b.height, 3); ctx.fill(); });
-                
-                // Пули врагов
                 enemyBullets.forEach(b => { ctx.fillStyle = '#ff0000'; ctx.shadowBlur = 10; ctx.shadowColor = '#ff0000'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.width, b.height, 3); ctx.fill(); });
                 ctx.shadowBlur = 0;
 
                 enemies.forEach(e => { if (enemyImg.complete) ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height); });
 
+                // Отрисовка Босса
+                if (boss && boss.state !== 'entering') {
+                    ctx.fillStyle = '#ff3366'; ctx.fillRect(boss.x, boss.y, boss.width, boss.height); // Пока квадратная заглушка
+                    // Полоса ХП Босса
+                    ctx.fillStyle = '#333'; ctx.fillRect(canvas.width/2 - 100, 20, 200, 15);
+                    ctx.fillStyle = '#ff0000'; ctx.fillRect(canvas.width/2 - 100, 20, 200 * (boss.hp / boss.maxHp), 15);
+                    ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center'; ctx.fillText('ЛЕВИАФАН', canvas.width/2, 32);
+                }
+
                 if ((gameState === 'PLAYING' || gameState === 'LEVEL_TRANSITION' || hitEffectTimer > 0) && player.y < canvas.height + 50) {
                     if (playerImg.complete) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
-                    
-                    // Отрисовка Дрона
                     if (hasHelper) {
-                        let hx = player.x + player.width/2 + Math.cos(helperAngle) * 60;
-                        let hy = player.y + player.height/2 + Math.sin(helperAngle) * 60;
+                        let hx = player.x + player.width/2 + Math.cos(helperAngle) * 60; let hy = player.y + player.height/2 + Math.sin(helperAngle) * 60;
                         ctx.fillStyle = '#ffcc00'; ctx.beginPath(); ctx.arc(hx, hy, 10, 0, Math.PI*2); ctx.fill();
                     }
                 }
 
                 if (gameState === 'LEVEL_TRANSITION') { ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = 'bold 32px Courier New'; ctx.fillText(`УРОВЕНЬ ПРОЙДЕН`, canvas.width / 2, canvas.height / 2 - 20); ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 20px Courier New'; ctx.fillText(`ПОЛЕТ К УРОВНЮ ${level + 1}...`, canvas.width / 2, canvas.height / 2 + 20); }
 
-                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px Courier New'; ctx.textAlign = 'left'; ctx.fillText(`SCORE: ${score}`, 15, 40); ctx.fillStyle = '#00ffcc'; ctx.fillText(`MAP: ${level}`, 15, 65);
-                ctx.textAlign = 'right'; ctx.fillText('❤️'.repeat(Math.max(0, lives)), canvas.width - 15, 40);
+                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px Courier New'; ctx.textAlign = 'left'; ctx.fillText(`SCORE: ${score}`, 15, 35); 
+                ctx.fillStyle = '#00ffcc'; ctx.fillText(`MAP: ${level}`, 15, 60);
+                
+                // Рисуем банк монет справа
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right'; ctx.fillText(`🪙 ${coins}`, canvas.width - 15, 60);
+                ctx.fillText('❤️'.repeat(Math.max(0, lives)), canvas.width - 15, 35);
+
                 drawUIButtons();
 
                 if (gameState === 'GAME_OVER') {
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Courier New'; ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Courier New'; ctx.fillText(`Счет: ${score} (Map ${level})`, canvas.width / 2, canvas.height / 2 + 20); ctx.font = '18px Courier New'; ctx.fillStyle = '#00ffcc'; ctx.fillText('Тапни, чтобы выйти в меню', canvas.width / 2, canvas.height / 2 + 80);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Courier New'; ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Courier New'; ctx.fillText(`Счет: ${score} (Map ${level})`, canvas.width / 2, canvas.height / 2 + 20); ctx.fillStyle = '#ffcc00'; ctx.fillText(`Собрано монет: ${coins}`, canvas.width / 2, canvas.height / 2 + 50); ctx.font = '18px Courier New'; ctx.fillStyle = '#00ffcc'; ctx.fillText('Тапни, чтобы выйти в меню', canvas.width / 2, canvas.height / 2 + 100);
                 }
             }
             update(); requestAnimationFrame(draw);
@@ -407,17 +441,18 @@
             initWebAudio(); if (bgMusic.paused && !isMusicMuted) bgMusic.play().catch(()=>{});
             const touch = e.touches[0];
             
-            // Проверка кликов по кнопкам звука
-            if (touch.clientX >= btnMusic.x && touch.clientX <= btnMusic.x + btnMusic.w && touch.clientY >= btnMusic.y && touch.clientY <= btnMusic.y + btnMusic.h) { toggleMusic(); return; }
-            if (touch.clientX >= btnSfx.x && touch.clientX <= btnSfx.x + btnSfx.w && touch.clientY >= btnSfx.y && touch.clientY <= btnSfx.y + btnSfx.h) { isSfxMuted = !isSfxMuted; return; }
+            if (touch.clientX >= btnMusic.x && touch.clientX <= btnMusic.x + btnMusic.w && touch.clientY >= btnMusic.y && touch.clientY <= btnMusic.y + btnMusic.h) { 
+                isMusicMuted = !isMusicMuted; bgMusic.volume = isMusicMuted ? 0 : 0.5; return; 
+            }
+            if (touch.clientX >= btnSfx.x && touch.clientX <= btnSfx.x + btnSfx.w && touch.clientY >= btnSfx.y && touch.clientY <= btnSfx.y + btnSfx.h) { 
+                isSfxMuted = !isSfxMuted; return; 
+            }
 
             if (gameState === 'MENU') {
-                // Клик по магазину
                 if (touch.clientY > canvas.height/2 + 50 && touch.clientY < canvas.height/2 + 100) { gameState = 'SHOP'; return; }
                 resetGame(); return; 
             }
             if (gameState === 'SHOP') {
-                // Клик "Назад"
                 if (touch.clientY > canvas.height - 80) { gameState = 'MENU'; }
                 return;
             }
