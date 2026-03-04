@@ -19,7 +19,6 @@
         tg.expand();
         if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
 
-        // Безопасное получение данных (если зашли не из ТГ, даем случайный ID для тестов)
         const user = tg.initDataUnsafe?.user || { 
             id: Math.floor(Math.random() * 1000000), 
             first_name: "TestPlayer", 
@@ -28,7 +27,6 @@
 
         const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
 
-        // Функция отправки очков на твой сервер
         async function sendScoreToDatabase(finalScore) {
             try {
                 const response = await fetch(`${BACKEND_URL}/save_score`, {
@@ -79,14 +77,16 @@
 
         const bgMusic = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/bgm.mp3');
         bgMusic.loop = true;
-        bgMusic.volume = 0.3; 
+        bgMusic.volume = 0.4; // Музыку сделал чуть громче
 
-        const shootSound = new AudioPool('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3', 5, 0.05); 
-        const boomSound = new AudioPool('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3', 3, 0.2);
+        // Радикально глушим эффекты
+        const shootSound = new AudioPool('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3', 5, 0.01); 
+        const boomSound = new AudioPool('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3', 3, 0.03);
 
         // --- Игровые переменные ---
-        let gameState = 'MENU'; // 'MENU', 'PLAYING', 'LEVEL_TRANSITION', 'GAME_OVER'
+        let gameState = 'MENU'; 
         let score = 0;
+        let lastTransitionScore = 0; // ПРЕДОХРАНИТЕЛЬ ОТ БЕСКОНЕЧНЫХ ПРЫЖКОВ
         let lives = 3;
         let level = 1;
         let hitEffectTimer = 0;
@@ -143,6 +143,7 @@
 
         function resetGame() {
             score = 0;
+            lastTransitionScore = 0; // Сбрасываем предохранитель
             lives = 3;
             level = 1;
             gameState = 'PLAYING';
@@ -157,47 +158,40 @@
         function update() {
             menuPulseTimer += 0.05;
 
-            // --- ЛОГИКА ПЕРЕХОДА НА УРОВЕНЬ ---
+            // --- ЛОГИКА ПЕРЕХОДА ---
             if (gameState === 'LEVEL_TRANSITION') {
                 transitionTimer++;
                 
-                // Звезды летят как сумасшедшие (гиперпрыжок)
                 stars.forEach(s => {
                     s.y += s.speed * 15;
                     if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
                 });
 
-                // Корабль улетает вверх
                 if (transitionTimer < 60) {
                     player.y -= 10; 
                     createEngineTrail(player.x + player.width / 2, player.y + player.height, true);
                 } 
-                // Ждем секунду и возвращаем корабль снизу
                 else if (transitionTimer === 90) {
                     level++;
-                    player.y = canvas.height + 100; // Прячем снизу
+                    player.y = canvas.height + 100; 
                 } 
-                // Корабль выплывает на новую позицию
                 else if (transitionTimer > 90 && transitionTimer < 130) {
                     player.y -= 5;
                     createEngineTrail(player.x + player.width / 2, player.y + player.height, false);
                 } 
-                // Переход закончен
                 else if (transitionTimer >= 130) {
                     gameState = 'PLAYING';
-                    player.y = canvas.height - 120; // Фиксируем
+                    player.y = canvas.height - 120; 
                 }
 
-                // Обновляем частицы гиперпрыжка
                 for (let i = particles.length - 1; i >= 0; i--) {
                     let p = particles[i];
                     p.x += p.vx; p.y += p.vy; p.life -= p.decay;
                     if (p.life <= 0) particles.splice(i, 1);
                 }
-                return; // Остальная логика игры на паузе во время прыжка
+                return; 
             }
 
-            // Звезды в обычном режиме
             let starMultiplier = gameState === 'PLAYING' ? (1 + level * 0.2) : 0.3;
             stars.forEach(s => {
                 s.y += s.speed * starMultiplier;
@@ -206,8 +200,9 @@
 
             if (gameState !== 'PLAYING') return;
 
-            // Проверка на запуск перехода (каждые 500 очков)
-            if (score > 0 && score % 500 === 0 && enemies.length === 0) {
+            // ИСПРАВЛЕННЫЙ ТРИГГЕР: проверяем, что мы еще не прыгали на этих очках
+            if (score > 0 && score % 500 === 0 && score !== lastTransitionScore && enemies.length === 0) {
+                lastTransitionScore = score; // Запоминаем, чтобы не прыгнуть снова
                 gameState = 'LEVEL_TRANSITION';
                 transitionTimer = 0;
                 bullets = [];
@@ -222,7 +217,6 @@
                 if (p.life <= 0) particles.splice(i, 1);
             }
 
-            // Враги не появляются, если скоро переход (например, 490 очков)
             let isApproachingTransition = (score % 500 >= 480);
             
             if (!isApproachingTransition) {
@@ -261,11 +255,10 @@
                     createExplosion(player.x + player.width/2, player.y + player.height/2, '#00ffcc');
                     enemies.splice(i, 1);
                     
-                    // СМЕРТЬ И ОТПРАВКА ОЧКОВ
                     if (lives <= 0) {
                         gameState = 'GAME_OVER';
                         bgMusic.pause();
-                        sendScoreToDatabase(score); // <--- ОТПРАВКА НА СЕРВЕР
+                        sendScoreToDatabase(score); // ОТПРАВКА НА СЕРВЕР
                     }
                     continue;
                 }
@@ -297,7 +290,6 @@
         }
 
         function draw() {
-            // Динамический фон (становится краснее и агрессивнее с каждым уровнем)
             let bgR = Math.min(20 + level * 8, 80);
             let bgB = Math.max(15 - level * 2, 0);
             ctx.fillStyle = `rgba(${bgR}, 5, ${bgB}, 0.8)`;
@@ -305,8 +297,8 @@
 
             stars.forEach(s => {
                 ctx.fillStyle = s.color; ctx.globalAlpha = s.size / 3;
-                if (gameState === 'LEVEL_TRANSITION') ctx.globalAlpha = 1.0; // Яркие звезды при прыжке
-                ctx.fillRect(s.x, s.y, s.size, s.size * (gameState === 'LEVEL_TRANSITION' ? 5 : 1)); // Вытягиваем звезды в линии
+                if (gameState === 'LEVEL_TRANSITION') ctx.globalAlpha = 1.0; 
+                ctx.fillRect(s.x, s.y, s.size, s.size * (gameState === 'LEVEL_TRANSITION' ? 5 : 1)); 
             });
             ctx.globalAlpha = 1.0;
 
@@ -347,12 +339,10 @@
                     if (enemyImg.complete && enemyImg.naturalHeight !== 0) ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height);
                 });
 
-                // Отрисовка игрока (даже во время перехода)
                 if ((gameState === 'PLAYING' || gameState === 'LEVEL_TRANSITION' || hitEffectTimer > 0) && player.y < canvas.height + 50) {
                     if (playerImg.complete && playerImg.naturalHeight !== 0) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
                 }
 
-                // Надпись ПЕРЕХОДА
                 if (gameState === 'LEVEL_TRANSITION') {
                     ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = 'bold 32px Courier New';
                     ctx.fillText(`УРОВЕНЬ ПРОЙДЕН`, canvas.width / 2, canvas.height / 2 - 20);
@@ -360,7 +350,6 @@
                     ctx.fillText(`ПОЛЕТ К УРОВНЮ ${level + 1}...`, canvas.width / 2, canvas.height / 2 + 20);
                 }
 
-                // UI Игры
                 ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px Courier New'; ctx.textAlign = 'left';
                 ctx.fillText(`SCORE: ${score}`, 15, 40);
                 ctx.fillStyle = '#00ffcc';
@@ -379,7 +368,6 @@
                     ctx.font = '18px Courier New'; ctx.fillStyle = '#00ffcc';
                     ctx.fillText('Тапни, чтобы выйти в меню', canvas.width / 2, canvas.height / 2 + 80);
                     
-                    // Мигающая надпись о сохранении
                     ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer));
                     ctx.fillStyle = '#ffff00'; ctx.font = '14px Courier New';
                     ctx.fillText('Сохранение результата...', canvas.width / 2, canvas.height - 50);
@@ -395,7 +383,6 @@
             if (gameState === 'MENU') { resetGame(); return; }
             if (gameState === 'GAME_OVER') { gameState = 'MENU'; return; }
             isTouching = true;
-            // Управление только если не в переходе
             if (gameState === 'PLAYING') {
                 const touch = e.touches[0];
                 player.x = touch.clientX - player.width / 2;
