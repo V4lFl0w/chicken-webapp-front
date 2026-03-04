@@ -11,6 +11,14 @@
     </style>
 </head>
 <body>
+    <div id="profileModal" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(5, 5, 10, 0.95); color: #00ffcc; font-family: 'Courier New', Courier, monospace; flex-direction: column; align-items: center; justify-content: center; z-index: 100;">
+        <h2 style="color: #ffcc00; font-size: 32px; margin-bottom: 40px;">ПРОФИЛЬ</h2>
+        <p style="font-size: 18px; color: #fff; margin-bottom: 10px;">Твой позывной:</p>
+        <input type="text" id="nicknameInput" maxlength="12" style="font-size: 24px; padding: 10px; text-align: center; background: #222; color: #00ffcc; border: 2px solid #ff3366; border-radius: 10px; margin-bottom: 30px; width: 200px; outline: none;">
+        <button id="saveProfileBtn" style="font-size: 20px; padding: 12px 30px; background: #00ffcc; color: #000; border: none; border-radius: 10px; font-weight: bold; margin-bottom: 15px;">СОХРАНИТЬ</button>
+        <button id="closeProfileBtn" style="font-size: 16px; padding: 10px 20px; background: transparent; color: #ff3366; border: none; outline: none;">ЗАКРЫТЬ</button>
+    </div>
+
     <canvas id="gameCanvas"></canvas>
 
     <script>
@@ -21,10 +29,21 @@
         const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Test", username: "Guest" };
         const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
 
-        // --- ДАННЫЕ ИГРОКА И БАЗА ---
         let bankCoins = 0;       
         let bestScore = 0;       
         let nickname = user.username || user.first_name || "Пилот";
+
+        // ИНВЕНТАРЬ (Сохраняем локально покупки)
+        let inventory = JSON.parse(localStorage.getItem('fly_inv_inv')) || {
+            skins: ['default'],
+            currentSkin: 'default',
+            permWeapon: 1,
+            permHelper: false
+        };
+
+        function saveInv() {
+            localStorage.setItem('fly_inv_inv', JSON.stringify(inventory));
+        }
 
         async function loadUserData() {
             try {
@@ -42,6 +61,7 @@
         
         async function sendScoreToDatabase(finalScore, collectedCoins) {
             try {
+                // Если collectedCoins отрицательный - сервер спишет монеты за покупку!
                 const res = await fetch(`${BACKEND_URL}/save_score`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -53,8 +73,22 @@
             } catch (e) { console.error("Ошибка сохранения:", e); }
         }
 
-        // Загружаем данные сразу при старте
         loadUserData();
+
+        const profileModal = document.getElementById('profileModal');
+        const nicknameInput = document.getElementById('nicknameInput');
+        document.getElementById('saveProfileBtn').addEventListener('click', () => {
+            if(nicknameInput.value.trim().length > 0) {
+                nickname = nicknameInput.value.trim();
+                sendScoreToDatabase(bestScore, 0); 
+            }
+            profileModal.style.display = 'none';
+            gameState = 'MENU';
+        });
+        document.getElementById('closeProfileBtn').addEventListener('click', () => {
+            profileModal.style.display = 'none';
+            gameState = 'MENU';
+        });
 
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -64,11 +98,8 @@
         const playerImg = new Image(); playerImg.src = 'https://coral-app-jxzy5.ondigitalocean.app/game/ship.png?v=3';
         const enemyImg = new Image(); enemyImg.src = 'https://coral-app-jxzy5.ondigitalocean.app/game/diamond.png?v=3';
 
-        // --- ЗВУК И НАСТРОЙКИ ---
-        let isMusicMuted = false;
-        let isSfxMuted = false;
-        let audioCtx;
-        const sfxBuffers = {};
+        let isMusicMuted = false; let isSfxMuted = false;
+        let audioCtx; const sfxBuffers = {};
 
         async function initWebAudio() {
             if (audioCtx) return;
@@ -90,38 +121,36 @@
         function playSFX(key, volumeLevel) {
             if (isSfxMuted || !audioCtx || !sfxBuffers[key]) return;
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            const source = audioCtx.createBufferSource();
-            source.buffer = sfxBuffers[key];
-            const gainNode = audioCtx.createGain();
-            gainNode.gain.value = volumeLevel; 
-            source.connect(gainNode); gainNode.connect(audioCtx.destination);
-            source.start(0);
+            const source = audioCtx.createBufferSource(); source.buffer = sfxBuffers[key];
+            const gainNode = audioCtx.createGain(); gainNode.gain.value = volumeLevel; 
+            source.connect(gainNode); gainNode.connect(audioCtx.destination); source.start(0);
         }
 
         const bgMusic = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/bgm.mp3');
         bgMusic.loop = true; bgMusic.volume = 0.5;
 
-        // UI Кнопки звука (сдвинули ниже и левее)
         const btnMusic = { x: 15, y: 85, w: 35, h: 35 };
         const btnSfx = { x: 60, y: 85, w: 35, h: 35 };
 
-        // --- ПЕРЕМЕННЫЕ ИГРЫ ---
+        // ТОВАРЫ В МАГАЗИНЕ
+        const shopItems = [
+            { id: 'skin_neon', name: 'Скин: НЕОН', desc: 'Кибер-свечение', price: 500, y: 120 },
+            { id: 'perm_w2', name: 'Оружейник', desc: 'Старт с пушкой 2 ур.', price: 1500, y: 220 },
+            { id: 'perm_help', name: 'Напарник', desc: 'Дрон со старта', price: 3000, y: 320 }
+        ];
+
         let gameState = 'MENU'; 
-        let score = 0;
-        let sessionCoins = 0; // Монеты текущего полета
-        let lives = 3;
-        let level = 1;
-        let nextJumpScore = 1000; 
+        let score = 0; let sessionCoins = 0; let lives = 3; let level = 1; let nextJumpScore = 1000; 
         
-        let weaponLevel = 1; 
-        let hasHelper = false; let helperAngle = 0;
+        let weaponLevel = 1; let hasHelper = false; let helperAngle = 0;
         let hitEffectTimer = 0; let transitionTimer = 0; let menuPulseTimer = 0; let coinAnimTimer = 0;
+        let shopMsg = ""; let shopMsgTimer = 0;
 
         const player = { width: 70, height: 70, x: canvas.width / 2 - 35, y: canvas.height - 120 };
 
         let bullets = []; let enemyBullets = []; let enemies = [];
         let stars = []; let particles = []; let powerups = []; let collectibles = [];
-        let boss = null; 
+        let boss = null; let bossDefeated = false;
 
         for (let i = 0; i < 120; i++) {
             stars.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: Math.random() * 2.5 + 0.5, speed: Math.random() * 2 + 0.2, color: ['#ffffff', '#aaddff', '#446688'][Math.floor(Math.random() * 3)] });
@@ -144,7 +173,11 @@
 
         function resetGame() {
             score = 0; sessionCoins = 0; lives = 3; level = 1; nextJumpScore = 1000;
-            weaponLevel = 1; hasHelper = false; boss = null; gameState = 'PLAYING';
+            // Применяем перманентные бонусы из инвентаря
+            weaponLevel = inventory.permWeapon; 
+            hasHelper = inventory.permHelper; 
+            
+            boss = null; bossDefeated = false; gameState = 'PLAYING';
             bullets = []; enemyBullets = []; enemies = []; particles = []; powerups = []; collectibles = [];
             player.x = canvas.width / 2 - player.width / 2; player.y = canvas.height - 120;
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
@@ -163,10 +196,24 @@
             if (gameState === 'LEVEL_TRANSITION') {
                 transitionTimer++;
                 stars.forEach(s => { s.y += s.speed * 15; if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; } });
-                if (transitionTimer < 60) { player.y -= 10; createEngineTrail(player.x + player.width / 2, player.y + player.height, true); } 
-                else if (transitionTimer === 90) { level++; nextJumpScore = level * 1000; player.y = canvas.height + 100; } 
-                else if (transitionTimer > 90 && transitionTimer < 130) { player.y -= 5; createEngineTrail(player.x + player.width / 2, player.y + player.height, false); } 
-                else if (transitionTimer >= 130) { gameState = 'PLAYING'; player.y = canvas.height - 120; }
+                
+                if (transitionTimer < 60) { 
+                    player.y -= 10; createEngineTrail(player.x + player.width / 2, player.y + player.height, true); 
+                } 
+                else if (transitionTimer === 90) { 
+                    // Просто прячем корабль вниз, УРОВЕНЬ ПОКА НЕ ПОВЫШАЕМ
+                    player.y = canvas.height + 100; 
+                } 
+                else if (transitionTimer > 90 && transitionTimer < 130) { 
+                    player.y -= 5; createEngineTrail(player.x + player.width / 2, player.y + player.height, false); 
+                } 
+                else if (transitionTimer >= 130) { 
+                    // ВОТ ТУТ МЕНЯЕМ УРОВЕНЬ (Фикс прыгающего текста)
+                    level++; 
+                    nextJumpScore = level * 1000; 
+                    gameState = 'PLAYING'; 
+                    player.y = canvas.height - 120; 
+                }
                 for (let i = particles.length - 1; i >= 0; i--) { let p = particles[i]; p.x += p.vx; p.y += p.vy; p.life -= p.decay; if (p.life <= 0) particles.splice(i, 1); }
                 return; 
             }
@@ -177,8 +224,12 @@
             if (gameState !== 'PLAYING') return;
 
             if (score >= nextJumpScore && enemies.length === 0 && !boss) {
-                if (level % 5 === 0 && score === nextJumpScore) { spawnBoss(); nextJumpScore += 99999; } 
-                else { gameState = 'LEVEL_TRANSITION'; transitionTimer = 0; bullets = []; enemyBullets = []; powerups = []; collectibles = []; return; }
+                if (level % 5 === 0 && !bossDefeated) { 
+                    spawnBoss(); nextJumpScore += 99999; 
+                } else { 
+                    gameState = 'LEVEL_TRANSITION'; transitionTimer = 0; bullets = []; enemyBullets = []; powerups = []; collectibles = []; 
+                    bossDefeated = false; return; 
+                }
             }
 
             createEngineTrail(player.x + player.width / 2, player.y + player.height - 10, false);
@@ -214,7 +265,7 @@
                         if (boss.hp <= 0) { 
                             createExplosion(boss.x + boss.width/2, boss.y + boss.height/2, '#ff0000', 3); score += 2000;
                             for(let c=0; c<15; c++) spawnLoot(boss.x + Math.random()*boss.width, boss.y + Math.random()*boss.height); 
-                            boss = null; nextJumpScore = score; 
+                            boss = null; bossDefeated = true; nextJumpScore = score; 
                         }
                         continue;
                     }
@@ -320,26 +371,60 @@
             stars.forEach(s => { ctx.fillStyle = s.color; ctx.globalAlpha = s.size / 3; if (gameState === 'LEVEL_TRANSITION') ctx.globalAlpha = 1.0; ctx.fillRect(s.x, s.y, s.size, s.size * (gameState === 'LEVEL_TRANSITION' ? 5 : 1)); });
             ctx.globalAlpha = 1.0;
 
-            if (gameState === 'MENU') {
+            if (gameState === 'MENU' || gameState === 'PROFILE') {
                 ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Courier New'; ctx.fillText('FLY INVADERS', canvas.width / 2, canvas.height / 3);
                 ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer)); ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 24px Courier New'; ctx.fillText('>>> ИГРАТЬ <<<', canvas.width / 2, canvas.height / 2);
                 ctx.globalAlpha = 1.0;
                 
                 ctx.fillStyle = '#ff3366'; ctx.font = 'bold 24px Courier New'; ctx.fillText('[ МАГАЗИН ]', canvas.width / 2, canvas.height / 2 + 80);
                 ctx.fillStyle = '#666666'; ctx.font = '18px Courier New'; ctx.fillText(`[ РЕКОРД: ${bestScore} | ПРОФИЛЬ ]`, canvas.width / 2, canvas.height / 2 + 130);
+                ctx.fillStyle = '#00ffcc'; ctx.font = '16px Courier New'; ctx.fillText(`Пилот: ${nickname}`, canvas.width / 2, canvas.height / 2 + 160);
                 drawUIButtons();
             } 
             else if (gameState === 'SHOP') {
-                ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = 'bold 36px Courier New'; ctx.fillText('МАГАЗИН', canvas.width / 2, 80);
-                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right'; ctx.font = 'bold 20px Courier New'; ctx.fillText(`Банк: ${bankCoins} 🪙`, canvas.width - 20, 40); 
+                ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = 'bold 36px Courier New'; ctx.fillText('МАГАЗИН', canvas.width / 2, 60);
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right'; ctx.font = 'bold 20px Courier New'; ctx.fillText(`Банк: ${bankCoins} 🪙`, canvas.width - 20, 30); 
 
-                ctx.fillStyle = '#333'; ctx.fillRect(20, 120, canvas.width - 40, 80);
-                ctx.fillStyle = '#00ffcc'; ctx.font = '18px Courier New'; ctx.textAlign = 'left'; ctx.fillText('🚀 Скин: Неон', 40, 150); ctx.fillText('Цена: 1000 🪙', 40, 180);
+                // ОТРИСОВКА ТОВАРОВ
+                shopItems.forEach(item => {
+                    ctx.fillStyle = '#222'; ctx.fillRect(20, item.y, canvas.width - 40, 80);
+                    ctx.fillStyle = '#00ffcc'; ctx.textAlign = 'left'; ctx.font = '18px Courier New';
+                    ctx.fillText(item.name, 40, item.y + 30);
+                    
+                    ctx.fillStyle = '#aaa'; ctx.font = '12px Courier New';
+                    ctx.fillText(item.desc, 40, item.y + 50);
 
-                ctx.fillStyle = '#333'; ctx.fillRect(20, 220, canvas.width - 40, 80);
-                ctx.fillStyle = '#ffcc00'; ctx.fillText('💥 Старт 3 ур. пушки', 40, 250); ctx.fillText('Цена: 2500 🪙', 40, 280);
+                    // Проверяем куплен ли предмет
+                    let isBought = false;
+                    let isActive = false;
+                    if (item.id === 'skin_neon' && inventory.skins.includes('neon')) { isBought = true; isActive = inventory.currentSkin === 'neon'; }
+                    if (item.id === 'perm_w2' && inventory.permWeapon >= 2) isBought = true;
+                    if (item.id === 'perm_help' && inventory.permHelper) isBought = true;
 
-                ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 24px Courier New'; ctx.fillText('<<< НАЗАД', canvas.width / 2, canvas.height - 50);
+                    ctx.font = 'bold 16px Courier New';
+                    if (isBought) {
+                        if (item.id === 'skin_neon') {
+                            ctx.fillStyle = isActive ? '#00ff00' : '#ffaa00';
+                            ctx.fillText(isActive ? 'ВЫБРАНО' : 'НАДЕТЬ', 40, item.y + 75);
+                        } else {
+                            ctx.fillStyle = '#00ff00';
+                            ctx.fillText('КУПЛЕНО', 40, item.y + 75);
+                        }
+                    } else {
+                        ctx.fillStyle = '#ffcc00';
+                        ctx.fillText(`Цена: ${item.price} 🪙`, 40, item.y + 75);
+                    }
+                });
+
+                // Вывод сообщения об ошибке покупки
+                if (shopMsgTimer > 0) {
+                    ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 20px Courier New';
+                    ctx.fillText(shopMsg, canvas.width / 2, 450);
+                    shopMsgTimer--;
+                }
+
+                ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 24px Courier New';
+                ctx.fillText('<<< НАЗАД', canvas.width / 2, canvas.height - 40);
             }
             else if (gameState === 'PLAYING' || gameState === 'GAME_OVER' || gameState === 'LEVEL_TRANSITION') {
                 if (hitEffectTimer > 0) { ctx.fillStyle = `rgba(255, 0, 0, ${hitEffectTimer / 30})`; ctx.fillRect(0, 0, canvas.width, canvas.height); hitEffectTimer--; }
@@ -363,7 +448,15 @@
                 }
 
                 if ((gameState === 'PLAYING' || gameState === 'LEVEL_TRANSITION' || hitEffectTimer > 0) && player.y < canvas.height + 50) {
+                    
+                    // ЭФФЕКТ НЕОНОВОГО СКИНА
+                    if (inventory.currentSkin === 'neon') {
+                        ctx.shadowBlur = 20; ctx.shadowColor = '#00ffff';
+                    }
+                    
                     if (playerImg.complete) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+                    ctx.shadowBlur = 0; // Сбрасываем свечение
+
                     if (hasHelper) { let hx = player.x + player.width/2 + Math.cos(helperAngle) * 60; let hy = player.y + player.height/2 + Math.sin(helperAngle) * 60; ctx.fillStyle = '#ffcc00'; ctx.beginPath(); ctx.arc(hx, hy, 10, 0, Math.PI*2); ctx.fill(); }
                 }
 
@@ -386,10 +479,9 @@
             initWebAudio(); 
             const touch = e.touches[0];
             
-            // Нажатие на кнопки звука
             if (touch.clientX >= btnMusic.x && touch.clientX <= btnMusic.x + btnMusic.w && touch.clientY >= btnMusic.y && touch.clientY <= btnMusic.y + btnMusic.h) { 
                 isMusicMuted = !isMusicMuted; 
-                bgMusic.muted = isMusicMuted; // Железобетонный мьют
+                bgMusic.muted = isMusicMuted; 
                 if (!isMusicMuted && bgMusic.paused) bgMusic.play().catch(()=>{});
                 return; 
             }
@@ -400,13 +492,54 @@
 
             if (gameState === 'MENU') {
                 if (touch.clientY > canvas.height/2 + 50 && touch.clientY < canvas.height/2 + 100) { gameState = 'SHOP'; return; }
+                if (touch.clientY > canvas.height/2 + 100 && touch.clientY < canvas.height/2 + 150) { 
+                    gameState = 'PROFILE'; 
+                    document.getElementById('nicknameInput').value = nickname;
+                    document.getElementById('profileModal').style.display = 'flex';
+                    return; 
+                }
                 resetGame(); return; 
             }
+            
             if (gameState === 'SHOP') {
-                if (touch.clientY > canvas.height - 80) { gameState = 'MENU'; }
-                return;
+                // ЛОГИКА КЛИКОВ ПО ТОВАРАМ
+                let clickedItem = shopItems.find(i => touch.clientY > i.y && touch.clientY < i.y + 80);
+                if (clickedItem) {
+                    let isBought = false;
+                    if (clickedItem.id === 'skin_neon' && inventory.skins.includes('neon')) isBought = true;
+                    if (clickedItem.id === 'perm_w2' && inventory.permWeapon >= 2) isBought = true;
+                    if (clickedItem.id === 'perm_help' && inventory.permHelper) isBought = true;
+
+                    if (isBought) {
+                        // Если это скин - надеваем/снимаем
+                        if (clickedItem.id === 'skin_neon') {
+                            inventory.currentSkin = inventory.currentSkin === 'neon' ? 'default' : 'neon';
+                            saveInv(); playSFX('shoot', 0.1);
+                        }
+                    } else {
+                        // ПОКУПКА
+                        if (bankCoins >= clickedItem.price) {
+                            bankCoins -= clickedItem.price; // Списываем локально
+                            sendScoreToDatabase(bestScore, -clickedItem.price); // СПИСЫВАЕМ НА СЕРВЕРЕ (ХИТРЫЙ ТРЮК)
+                            
+                            if (clickedItem.id === 'skin_neon') inventory.skins.push('neon');
+                            if (clickedItem.id === 'perm_w2') inventory.permWeapon = 2;
+                            if (clickedItem.id === 'perm_help') inventory.permHelper = true;
+                            
+                            saveInv(); playSFX('boom', 0.1);
+                        } else {
+                            shopMsg = "НЕ ХВАТАЕТ МОНЕТ!";
+                            shopMsgTimer = 60;
+                            playSFX('shoot', 0.05); // Звук ошибки
+                        }
+                    }
+                    return;
+                }
+
+                if (touch.clientY > canvas.height - 80) { gameState = 'MENU'; return; }
             }
             if (gameState === 'GAME_OVER') { gameState = 'MENU'; return; }
+            if (gameState === 'PROFILE') return; 
             
             isTouching = true;
             if (gameState === 'PLAYING') { player.x = touch.clientX - player.width / 2; player.y = touch.clientY - player.height / 2; }
