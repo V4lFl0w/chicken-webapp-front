@@ -6,7 +6,7 @@
     <title>Fly Invaders</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin: 0; padding: 0; background-color: #080812; overflow: hidden; touch-action: none; font-family: 'Courier New', Courier, monospace; }
+        body { margin: 0; padding: 0; background-color: #05050a; overflow: hidden; touch-action: none; font-family: 'Courier New', Courier, monospace; }
         canvas { display: block; }
     </style>
 </head>
@@ -14,9 +14,38 @@
     <canvas id="gameCanvas"></canvas>
 
     <script>
+        // --- Настройка Telegram и Бэкенда ---
         const tg = window.Telegram.WebApp;
         tg.expand();
         if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+
+        // Безопасное получение данных (если зашли не из ТГ, даем случайный ID для тестов)
+        const user = tg.initDataUnsafe?.user || { 
+            id: Math.floor(Math.random() * 1000000), 
+            first_name: "TestPlayer", 
+            username: "Guest" 
+        };
+
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+
+        // Функция отправки очков на твой сервер
+        async function sendScoreToDatabase(finalScore) {
+            try {
+                const response = await fetch(`${BACKEND_URL}/save_score`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        telegram_id: user.id,
+                        username: user.username || user.first_name || "Unknown",
+                        score: finalScore
+                    })
+                });
+                const result = await response.json();
+                console.log("Успех! Ответ сервера:", result.message);
+            } catch (e) {
+                console.error("Ошибка сохранения очков:", e);
+            }
+        }
 
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -29,30 +58,40 @@
         const enemyImg = new Image();
         enemyImg.src = 'https://coral-app-jxzy5.ondigitalocean.app/game/diamond.png?v=3';
 
-        // --- Загрузка звуков ---
-        // Эти файлы нужно будет закинуть на GitHub
-        const bgMusic = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/bgm.mp3');
-        bgMusic.loop = true;
-        bgMusic.volume = 0.4;
-
-        const shootSound = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3');
-        const boomSound = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3');
-
-        // Функция для оптимизированного проигрывания (без утечек памяти и лагов)
-        function playSound(audioObj, vol = 0.5) {
-            audioObj.pause(); // Останавливаем текущее звучание
-            audioObj.currentTime = 0; // Перематываем в самое начало
-            audioObj.volume = vol;
-            audioObj.play().catch(e => {}); // Запускаем заново
+        // --- Аудио-Пулы ---
+        class AudioPool {
+            constructor(src, size, volume) {
+                this.pool = [];
+                for (let i = 0; i < size; i++) {
+                    let audio = new Audio(src);
+                    audio.volume = volume;
+                    this.pool.push(audio);
+                }
+                this.index = 0;
+            }
+            play() {
+                let audio = this.pool[this.index];
+                audio.currentTime = 0; 
+                audio.play().catch(() => {});
+                this.index = (this.index + 1) % this.pool.length;
+            }
         }
 
+        const bgMusic = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/bgm.mp3');
+        bgMusic.loop = true;
+        bgMusic.volume = 0.3; 
+
+        const shootSound = new AudioPool('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3', 5, 0.05); 
+        const boomSound = new AudioPool('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3', 3, 0.2);
+
         // --- Игровые переменные ---
-        let gameState = 'MENU'; // 'MENU', 'PLAYING', 'GAME_OVER'
+        let gameState = 'MENU'; // 'MENU', 'PLAYING', 'LEVEL_TRANSITION', 'GAME_OVER'
         let score = 0;
         let lives = 3;
+        let level = 1;
         let hitEffectTimer = 0;
-        let globalSpeedMultiplier = 1;
         let menuPulseTimer = 0;
+        let transitionTimer = 0;
 
         const player = {
             width: 70, height: 70,
@@ -64,13 +103,13 @@
         let stars = [];
         let particles = []; 
 
-        const starColors = ['#ffffff', '#aaddff', '#ffeedd'];
-        for (let i = 0; i < 100; i++) {
+        const starColors = ['#ffffff', '#aaddff', '#446688'];
+        for (let i = 0; i < 120; i++) {
             stars.push({
                 x: Math.random() * canvas.width,
                 y: Math.random() * canvas.height,
                 size: Math.random() * 2.5 + 0.5,
-                speed: Math.random() * 3 + 0.5,
+                speed: Math.random() * 2 + 0.2, 
                 color: starColors[Math.floor(Math.random() * starColors.length)]
             });
         }
@@ -80,57 +119,102 @@
         let isTouching = false;
 
         function createExplosion(x, y, color) {
-            playSound(boomSound, 0.6); // Звук взрыва
-            for (let i = 0; i < 15; i++) {
+            boomSound.play();
+            for (let i = 0; i < 20; i++) { 
                 particles.push({
                     x: x, y: y,
-                    vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8,
+                    vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10,
                     life: 1.0, decay: Math.random() * 0.03 + 0.02,
-                    color: color, size: Math.random() * 4 + 2
+                    color: color, size: Math.random() * 5 + 2
                 });
             }
         }
 
-        function createEngineTrail(x, y) {
+        function createEngineTrail(x, y, isHyper = false) {
             particles.push({
-                x: x + (Math.random() - 0.5) * 10, y: y,
-                vx: (Math.random() - 0.5) * 2, vy: Math.random() * 5 + 2,
-                life: 1.0, decay: 0.05,
-                color: '#ffaa00', size: Math.random() * 5 + 2
+                x: x + (Math.random() - 0.5) * 12, y: y,
+                vx: (Math.random() - 0.5) * (isHyper ? 4 : 2), 
+                vy: Math.random() * (isHyper ? 15 : 6) + 3,
+                life: 1.0, decay: isHyper ? 0.03 : 0.06,
+                color: isHyper ? '#ffffff' : '#00ccff', 
+                size: Math.random() * (isHyper ? 6 : 4) + 1 
             });
         }
 
         function resetGame() {
             score = 0;
             lives = 3;
+            level = 1;
             gameState = 'PLAYING';
-            globalSpeedMultiplier = 1;
             bullets = [];
             enemies = [];
             particles = [];
             player.x = canvas.width / 2 - player.width / 2;
             player.y = canvas.height - 120;
-            
-            // Включаем музыку
-            bgMusic.play().catch(e => console.log(e));
+            bgMusic.play().catch(() => {});
         }
 
         function update() {
             menuPulseTimer += 0.05;
 
-            // Звезды летят всегда (даже в меню)
-            stars.forEach(s => {
-                s.y += s.speed * (gameState === 'PLAYING' ? globalSpeedMultiplier * 0.5 : 0.2);
-                if (s.y > canvas.height) {
-                    s.y = 0;
-                    s.x = Math.random() * canvas.width;
+            // --- ЛОГИКА ПЕРЕХОДА НА УРОВЕНЬ ---
+            if (gameState === 'LEVEL_TRANSITION') {
+                transitionTimer++;
+                
+                // Звезды летят как сумасшедшие (гиперпрыжок)
+                stars.forEach(s => {
+                    s.y += s.speed * 15;
+                    if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+                });
+
+                // Корабль улетает вверх
+                if (transitionTimer < 60) {
+                    player.y -= 10; 
+                    createEngineTrail(player.x + player.width / 2, player.y + player.height, true);
+                } 
+                // Ждем секунду и возвращаем корабль снизу
+                else if (transitionTimer === 90) {
+                    level++;
+                    player.y = canvas.height + 100; // Прячем снизу
+                } 
+                // Корабль выплывает на новую позицию
+                else if (transitionTimer > 90 && transitionTimer < 130) {
+                    player.y -= 5;
+                    createEngineTrail(player.x + player.width / 2, player.y + player.height, false);
+                } 
+                // Переход закончен
+                else if (transitionTimer >= 130) {
+                    gameState = 'PLAYING';
+                    player.y = canvas.height - 120; // Фиксируем
                 }
+
+                // Обновляем частицы гиперпрыжка
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    let p = particles[i];
+                    p.x += p.vx; p.y += p.vy; p.life -= p.decay;
+                    if (p.life <= 0) particles.splice(i, 1);
+                }
+                return; // Остальная логика игры на паузе во время прыжка
+            }
+
+            // Звезды в обычном режиме
+            let starMultiplier = gameState === 'PLAYING' ? (1 + level * 0.2) : 0.3;
+            stars.forEach(s => {
+                s.y += s.speed * starMultiplier;
+                if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
             });
 
             if (gameState !== 'PLAYING') return;
 
-            globalSpeedMultiplier = 1 + Math.floor(score / 100) * 0.15;
-            createEngineTrail(player.x + player.width / 2, player.y + player.height - 10);
+            // Проверка на запуск перехода (каждые 500 очков)
+            if (score > 0 && score % 500 === 0 && enemies.length === 0) {
+                gameState = 'LEVEL_TRANSITION';
+                transitionTimer = 0;
+                bullets = [];
+                return;
+            }
+
+            createEngineTrail(player.x + player.width / 2, player.y + player.height - 10, false);
 
             for (let i = particles.length - 1; i >= 0; i--) {
                 let p = particles[i];
@@ -138,12 +222,20 @@
                 if (p.life <= 0) particles.splice(i, 1);
             }
 
-            let spawnRate = 0.02 + (globalSpeedMultiplier * 0.005);
-            if (Math.random() < spawnRate) {
-                enemies.push({
-                    x: Math.random() * (canvas.width - 50), y: -50,
-                    width: 50, height: 50, speed: (2 + Math.random() * 3) * globalSpeedMultiplier
-                });
+            // Враги не появляются, если скоро переход (например, 490 очков)
+            let isApproachingTransition = (score % 500 >= 480);
+            
+            if (!isApproachingTransition) {
+                let spawnRate = 0.02 + (level * 0.008);
+                if (Math.random() < spawnRate) {
+                    enemies.push({
+                        x: Math.random() * (canvas.width - 50), 
+                        y: -50,
+                        width: 50, height: 50, 
+                        speed: (2 + Math.random() * 2) + (level * 0.5), 
+                        wiggleOffset: Math.random() * Math.PI * 2 
+                    });
+                }
             }
 
             for (let i = bullets.length - 1; i >= 0; i--) {
@@ -154,18 +246,26 @@
             for (let i = enemies.length - 1; i >= 0; i--) {
                 let e = enemies[i];
                 e.y += e.speed;
+                e.x += Math.sin((e.y / 50) + e.wiggleOffset) * (level * 0.4);
+
+                if (e.x < 0) e.x = 0;
+                if (e.x + e.width > canvas.width) e.x = canvas.width - e.width;
+
                 if (e.y > canvas.height) { enemies.splice(i, 1); continue; }
 
-                let hitPadding = 10;
+                let hitPadding = 12;
                 if (e.x + hitPadding < player.x + player.width - hitPadding && e.x + e.width - hitPadding > player.x + hitPadding &&
                     e.y + hitPadding < player.y + player.height - hitPadding && e.y + e.height - hitPadding > player.y + hitPadding) {
                     lives--;
-                    hitEffectTimer = 10;
+                    hitEffectTimer = 15;
                     createExplosion(player.x + player.width/2, player.y + player.height/2, '#00ffcc');
                     enemies.splice(i, 1);
+                    
+                    // СМЕРТЬ И ОТПРАВКА ОЧКОВ
                     if (lives <= 0) {
                         gameState = 'GAME_OVER';
-                        bgMusic.pause(); // Тормозим музыку при смерти
+                        bgMusic.pause();
+                        sendScoreToDatabase(score); // <--- ОТПРАВКА НА СЕРВЕР
                     }
                     continue;
                 }
@@ -174,7 +274,7 @@
                     let b = bullets[j];
                     if (b.x < e.x + e.width && b.x + b.width > e.x && b.y < e.y + e.height && b.y + b.height > e.y) {
                         score += 10;
-                        createExplosion(e.x + e.width/2, e.y + e.height/2, '#ff3366');
+                        createExplosion(e.x + e.width/2, e.y + e.height/2, '#ffcc00');
                         enemies.splice(i, 1);
                         bullets.splice(j, 1);
                         break; 
@@ -183,47 +283,47 @@
             }
 
             if (isTouching && Date.now() - lastShootTime > shootDelay) {
-                bullets.push({
-                    x: player.x + player.width / 2 - 3, y: player.y + 10,
-                    width: 6, height: 20, speed: 12
-                });
-                playSound(shootSound, 0.2); // Звук выстрела
-                player.y += 1;
+                if (level >= 3) {
+                    bullets.push({ x: player.x + 10, y: player.y + 10, width: 4, height: 20, speed: 14 });
+                    bullets.push({ x: player.x + player.width - 14, y: player.y + 10, width: 4, height: 20, speed: 14 });
+                } else {
+                    bullets.push({ x: player.x + player.width / 2 - 3, y: player.y + 10, width: 6, height: 20, speed: 12 });
+                }
+                
+                shootSound.play();
+                player.y += 1; 
                 lastShootTime = Date.now();
             }
         }
 
         function draw() {
-            ctx.fillStyle = 'rgba(8, 8, 18, 0.6)';
+            // Динамический фон (становится краснее и агрессивнее с каждым уровнем)
+            let bgR = Math.min(20 + level * 8, 80);
+            let bgB = Math.max(15 - level * 2, 0);
+            ctx.fillStyle = `rgba(${bgR}, 5, ${bgB}, 0.8)`;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             stars.forEach(s => {
                 ctx.fillStyle = s.color; ctx.globalAlpha = s.size / 3;
-                ctx.fillRect(s.x, s.y, s.size, s.size);
+                if (gameState === 'LEVEL_TRANSITION') ctx.globalAlpha = 1.0; // Яркие звезды при прыжке
+                ctx.fillRect(s.x, s.y, s.size, s.size * (gameState === 'LEVEL_TRANSITION' ? 5 : 1)); // Вытягиваем звезды в линии
             });
             ctx.globalAlpha = 1.0;
 
             if (gameState === 'MENU') {
-                // --- ГЛАВНОЕ МЕНЮ ---
-                ctx.fillStyle = '#ffcc00';
-                ctx.textAlign = 'center';
-                ctx.font = 'bold 42px Courier New';
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Courier New';
                 ctx.fillText('FLY INVADERS', canvas.width / 2, canvas.height / 3);
                 
-                // Пульсирующая кнопка играть
                 ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer));
-                ctx.fillStyle = '#00ffcc';
-                ctx.font = 'bold 24px Courier New';
+                ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 24px Courier New';
                 ctx.fillText('>>> ТАПНИ ДЛЯ СТАРТА <<<', canvas.width / 2, canvas.height / 2);
                 ctx.globalAlpha = 1.0;
 
-                ctx.fillStyle = '#666666'; // Серый цвет для неактивных кнопок
-                ctx.font = '18px Courier New';
+                ctx.fillStyle = '#666666'; ctx.font = '18px Courier New';
                 ctx.fillText('[ МАГАЗИН - Скоро ]', canvas.width / 2, canvas.height / 2 + 80);
                 ctx.fillText('[ ТОП ИГРОКОВ - Скоро ]', canvas.width / 2, canvas.height / 2 + 130);
             } 
-            else if (gameState === 'PLAYING' || gameState === 'GAME_OVER') {
-                // --- ОТРИСОВКА ИГРЫ ---
+            else if (gameState === 'PLAYING' || gameState === 'GAME_OVER' || gameState === 'LEVEL_TRANSITION') {
                 if (hitEffectTimer > 0) {
                     ctx.fillStyle = `rgba(255, 0, 0, ${hitEffectTimer / 30})`;
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -232,7 +332,7 @@
 
                 particles.forEach(p => {
                     ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life);
-                    ctx.shadowBlur = 10; ctx.shadowColor = p.color;
+                    ctx.shadowBlur = 15; ctx.shadowColor = p.color;
                     ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
                 });
                 ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
@@ -247,25 +347,43 @@
                     if (enemyImg.complete && enemyImg.naturalHeight !== 0) ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height);
                 });
 
-                if (gameState === 'PLAYING' || hitEffectTimer > 0) {
+                // Отрисовка игрока (даже во время перехода)
+                if ((gameState === 'PLAYING' || gameState === 'LEVEL_TRANSITION' || hitEffectTimer > 0) && player.y < canvas.height + 50) {
                     if (playerImg.complete && playerImg.naturalHeight !== 0) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
                 }
 
-                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Courier New'; ctx.textAlign = 'left';
-                ctx.fillText(`SCORE: ${score}`, 20, 40);
+                // Надпись ПЕРЕХОДА
+                if (gameState === 'LEVEL_TRANSITION') {
+                    ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = 'bold 32px Courier New';
+                    ctx.fillText(`УРОВЕНЬ ПРОЙДЕН`, canvas.width / 2, canvas.height / 2 - 20);
+                    ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 20px Courier New';
+                    ctx.fillText(`ПОЛЕТ К УРОВНЮ ${level + 1}...`, canvas.width / 2, canvas.height / 2 + 20);
+                }
+
+                // UI Игры
+                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px Courier New'; ctx.textAlign = 'left';
+                ctx.fillText(`SCORE: ${score}`, 15, 40);
+                ctx.fillStyle = '#00ffcc';
+                ctx.fillText(`MAP: ${level}`, 15, 65);
                 
                 ctx.textAlign = 'right';
-                ctx.fillText('❤️'.repeat(Math.max(0, lives)), canvas.width - 20, 40);
+                ctx.fillText('❤️'.repeat(Math.max(0, lives)), canvas.width - 15, 40);
 
                 if (gameState === 'GAME_OVER') {
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                     ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Courier New';
-                    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
+                    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40);
                     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Courier New';
-                    ctx.fillText(`Счет: ${score}`, canvas.width / 2, canvas.height / 2 + 30);
+                    ctx.fillText(`Счет: ${score} (Map ${level})`, canvas.width / 2, canvas.height / 2 + 20);
                     ctx.font = '18px Courier New'; ctx.fillStyle = '#00ffcc';
                     ctx.fillText('Тапни, чтобы выйти в меню', canvas.width / 2, canvas.height / 2 + 80);
+                    
+                    // Мигающая надпись о сохранении
+                    ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer));
+                    ctx.fillStyle = '#ffff00'; ctx.font = '14px Courier New';
+                    ctx.fillText('Сохранение результата...', canvas.width / 2, canvas.height - 50);
+                    ctx.globalAlpha = 1.0;
                 }
             }
 
@@ -274,18 +392,15 @@
         }
 
         canvas.addEventListener('touchstart', (e) => {
-            if (gameState === 'MENU') {
-                resetGame();
-                return;
-            }
-            if (gameState === 'GAME_OVER') {
-                gameState = 'MENU'; // Возврат в меню после смерти
-                return;
-            }
+            if (gameState === 'MENU') { resetGame(); return; }
+            if (gameState === 'GAME_OVER') { gameState = 'MENU'; return; }
             isTouching = true;
-            const touch = e.touches[0];
-            player.x = touch.clientX - player.width / 2;
-            player.y = touch.clientY - player.height / 2;
+            // Управление только если не в переходе
+            if (gameState === 'PLAYING') {
+                const touch = e.touches[0];
+                player.x = touch.clientX - player.width / 2;
+                player.y = touch.clientY - player.height / 2;
+            }
         }, { passive: false });
         
         canvas.addEventListener('touchend', () => isTouching = false, { passive: false });
