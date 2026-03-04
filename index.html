@@ -33,17 +33,15 @@
         let bestScore = 0;       
         let nickname = user.username || user.first_name || "Пилот";
 
-        // ИНВЕНТАРЬ (Сохраняем локально покупки)
         let inventory = JSON.parse(localStorage.getItem('fly_inv_inv')) || {
-            skins: ['default'],
-            currentSkin: 'default',
-            permWeapon: 1,
-            permHelper: false
+            skins: ['default'], currentSkin: 'default',
+            themes: ['default'], currentTheme: 'default',
+            permWeapon: 1, permHelper: false
         };
 
-        function saveInv() {
-            localStorage.setItem('fly_inv_inv', JSON.stringify(inventory));
-        }
+        function saveInv() { localStorage.setItem('fly_inv_inv', JSON.stringify(inventory)); }
+
+        let gameState = 'LOADING'; 
 
         async function loadUserData() {
             try {
@@ -53,24 +51,36 @@
                     body: JSON.stringify({ telegram_id: user.id, username: nickname })
                 });
                 const data = await res.json();
-                bankCoins = data.coins || 0;
-                bestScore = data.high_score || 0;
+                bankCoins = Number(data.coins) || 0;
+                bestScore = Number(data.high_score) || 0;
                 nickname = data.nickname || nickname;
-            } catch(e) { console.error("Ошибка загрузки профиля:", e); }
+                checkDailyBonus();
+            } catch(e) { console.error(e); checkDailyBonus(); }
         }
         
         async function sendScoreToDatabase(finalScore, collectedCoins) {
             try {
-                // Если collectedCoins отрицательный - сервер спишет монеты за покупку!
                 const res = await fetch(`${BACKEND_URL}/save_score`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ telegram_id: user.id, username: nickname, score: finalScore, coins: collectedCoins })
                 });
                 const result = await res.json();
-                bankCoins = result.coins_total; 
-                bestScore = result.high_score;
-            } catch (e) { console.error("Ошибка сохранения:", e); }
+                bankCoins = Number(result.coins_total); 
+                bestScore = Number(result.high_score);
+            } catch (e) { console.error(e); }
+        }
+
+        // ЕЖЕДНЕВНЫЙ БОНУС
+        function checkDailyBonus() {
+            let today = new Date().toDateString();
+            let lastLogin = localStorage.getItem('fly_inv_last_login');
+            if (lastLogin !== today) {
+                gameState = 'DAILY_BONUS';
+                localStorage.setItem('fly_inv_last_login', today);
+            } else {
+                gameState = 'MENU';
+            }
         }
 
         loadUserData();
@@ -86,8 +96,7 @@
             gameState = 'MENU';
         });
         document.getElementById('closeProfileBtn').addEventListener('click', () => {
-            profileModal.style.display = 'none';
-            gameState = 'MENU';
+            profileModal.style.display = 'none'; gameState = 'MENU';
         });
 
         const canvas = document.getElementById('gameCanvas');
@@ -107,8 +116,7 @@
             audioCtx = new AudioContext();
             const loadBuffer = async (url, key) => {
                 try {
-                    const res = await fetch(url);
-                    const buf = await res.arrayBuffer();
+                    const res = await fetch(url); const buf = await res.arrayBuffer();
                     sfxBuffers[key] = await audioCtx.decodeAudioData(buf);
                 } catch (e) {}
             };
@@ -129,20 +137,22 @@
         const bgMusic = new Audio('https://coral-app-jxzy5.ondigitalocean.app/game/bgm.mp3');
         bgMusic.loop = true; bgMusic.volume = 0.5;
 
-        const btnMusic = { x: 15, y: 85, w: 35, h: 35 };
-        const btnSfx = { x: 60, y: 85, w: 35, h: 35 };
+        const btnMusic = { x: 15, y: 85, w: 35, h: 35 }; const btnSfx = { x: 60, y: 85, w: 35, h: 35 };
 
-        // ТОВАРЫ В МАГАЗИНЕ
+        // МАГАЗИН (Уплотнили и добавили темы)
         const shopItems = [
-            { id: 'skin_neon', name: 'Скин: НЕОН', desc: 'Кибер-свечение', price: 500, y: 120 },
-            { id: 'perm_w2', name: 'Оружейник', desc: 'Старт с пушкой 2 ур.', price: 1500, y: 220 },
-            { id: 'perm_help', name: 'Напарник', desc: 'Дрон со старта', price: 3000, y: 320 }
+            { id: 'skin_neon', type: 'skin', name: 'Скин: НЕОН', desc: 'Кибер-свечение', price: 500, y: 100 },
+            { id: 'perm_w2', type: 'upgrade', name: 'Оружейник', desc: 'Пушка 2 ур.', price: 1500, y: 175 },
+            { id: 'perm_help', type: 'upgrade', name: 'Напарник', desc: 'Дрон со старта', price: 3000, y: 250 },
+            { id: 'theme_retro', type: 'theme', name: 'Тема: РЕТРО', desc: 'Пиксель-UI', price: 1000, y: 325 },
+            { id: 'theme_pro', type: 'premium', name: 'Эксклюзив: PRO', desc: 'Особый интерфейс', price: '1.99$', y: 400 }
         ];
 
-        let gameState = 'MENU'; 
         let score = 0; let sessionCoins = 0; let lives = 3; let level = 1; let nextJumpScore = 1000; 
         
         let weaponLevel = 1; let hasHelper = false; let helperAngle = 0;
+        let shieldTimer = 0; // ТАЙМЕР ЩИТА
+        
         let hitEffectTimer = 0; let transitionTimer = 0; let menuPulseTimer = 0; let coinAnimTimer = 0;
         let shopMsg = ""; let shopMsgTimer = 0;
 
@@ -172,10 +182,9 @@
         }
 
         function resetGame() {
-            score = 0; sessionCoins = 0; lives = 3; level = 1; nextJumpScore = 1000;
-            // Применяем перманентные бонусы из инвентаря
-            weaponLevel = inventory.permWeapon; 
-            hasHelper = inventory.permHelper; 
+            score = 0; sessionCoins = 0; lives = 3; level = 1; 
+            nextJumpScore = 1000; // ЖЕСТКАЯ ПРИВЯЗКА К 1000 ОЧКАМ ЗА УРОВЕНЬ
+            weaponLevel = inventory.permWeapon; hasHelper = inventory.permHelper; shieldTimer = 0;
             
             boss = null; bossDefeated = false; gameState = 'PLAYING';
             bullets = []; enemyBullets = []; enemies = []; particles = []; powerups = []; collectibles = [];
@@ -184,52 +193,54 @@
             if (!isMusicMuted) bgMusic.play().catch(() => {});
         }
 
-        function spawnLoot(x, y) {
+        function spawnLoot(x, y, forceCoins = 0) {
+            if (forceCoins > 0) {
+                // Спавн нескольких монет (для астероидов)
+                for(let i=0; i<forceCoins; i++) {
+                    collectibles.push({ x: x + (Math.random()-0.5)*20, y: y + (Math.random()-0.5)*20, size: 15, type: 'coin', speed: 3 });
+                }
+                return;
+            }
             let rand = Math.random();
             if (rand < 0.3) collectibles.push({ x: x, y: y, size: 15, type: 'coin', speed: 3 });
-            else if (rand < 0.4) powerups.push({ x: x, y: y, size: 20, type: Math.random() > 0.5 ? 'weapon' : 'helper', speed: 2 });
+            else if (rand < 0.4) {
+                // Разные типы бустеров: Оружие (W), Дрон (H), ЩИТ (S)
+                let pType = 'weapon';
+                let pRand = Math.random();
+                if (pRand > 0.7) pType = 'shield';
+                else if (pRand > 0.4) pType = 'helper';
+                powerups.push({ x: x, y: y, size: 20, type: pType, speed: 2 });
+            }
         }
 
         function update() {
             menuPulseTimer += 0.05; helperAngle += 0.1; coinAnimTimer += 0.15;
+            if (shieldTimer > 0) shieldTimer--;
 
             if (gameState === 'LEVEL_TRANSITION') {
                 transitionTimer++;
                 stars.forEach(s => { s.y += s.speed * 15; if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; } });
                 
-                if (transitionTimer < 60) { 
-                    player.y -= 10; createEngineTrail(player.x + player.width / 2, player.y + player.height, true); 
-                } 
-                else if (transitionTimer === 90) { 
-                    // Просто прячем корабль вниз, УРОВЕНЬ ПОКА НЕ ПОВЫШАЕМ
-                    player.y = canvas.height + 100; 
-                } 
-                else if (transitionTimer > 90 && transitionTimer < 130) { 
-                    player.y -= 5; createEngineTrail(player.x + player.width / 2, player.y + player.height, false); 
-                } 
+                if (transitionTimer < 60) { player.y -= 10; createEngineTrail(player.x + player.width / 2, player.y + player.height, true); } 
+                else if (transitionTimer === 90) { player.y = canvas.height + 100; } 
+                else if (transitionTimer > 90 && transitionTimer < 130) { player.y -= 5; createEngineTrail(player.x + player.width / 2, player.y + player.height, false); } 
                 else if (transitionTimer >= 130) { 
-                    // ВОТ ТУТ МЕНЯЕМ УРОВЕНЬ (Фикс прыгающего текста)
                     level++; 
-                    nextJumpScore = level * 1000; 
-                    gameState = 'PLAYING'; 
-                    player.y = canvas.height - 120; 
+                    nextJumpScore = score + 1000; // ИСПРАВЛЕНА ЛОГИКА СКИПОВ. Ровно +1000 к текущему.
+                    gameState = 'PLAYING'; player.y = canvas.height - 120; 
                 }
                 for (let i = particles.length - 1; i >= 0; i--) { let p = particles[i]; p.x += p.vx; p.y += p.vy; p.life -= p.decay; if (p.life <= 0) particles.splice(i, 1); }
                 return; 
             }
 
-            let starMultiplier = gameState === 'PLAYING' ? (1 + level * 0.2) : 0.3;
-            stars.forEach(s => { s.y += s.speed * starMultiplier; if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; } });
-
             if (gameState !== 'PLAYING') return;
 
+            let starMultiplier = (1 + level * 0.2);
+            stars.forEach(s => { s.y += s.speed * starMultiplier; if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; } });
+
             if (score >= nextJumpScore && enemies.length === 0 && !boss) {
-                if (level % 5 === 0 && !bossDefeated) { 
-                    spawnBoss(); nextJumpScore += 99999; 
-                } else { 
-                    gameState = 'LEVEL_TRANSITION'; transitionTimer = 0; bullets = []; enemyBullets = []; powerups = []; collectibles = []; 
-                    bossDefeated = false; return; 
-                }
+                if (level % 5 === 0 && !bossDefeated) { spawnBoss(); nextJumpScore += 99999; } 
+                else { gameState = 'LEVEL_TRANSITION'; transitionTimer = 0; bullets = []; enemyBullets = []; powerups = []; collectibles = []; bossDefeated = false; return; }
             }
 
             createEngineTrail(player.x + player.width / 2, player.y + player.height - 10, false);
@@ -251,8 +262,14 @@
             } else if (score < nextJumpScore) {
                 let spawnRate = 0.015 + (level * 0.005);
                 if (Math.random() < spawnRate) {
-                    let isShooter = level >= 2 && Math.random() < 0.4;
-                    enemies.push({ x: Math.random() * (canvas.width - 50), y: -50, width: 50, height: 50, speed: (2 + Math.random() * 2) + (level * 0.4), type: isShooter ? 'shooter' : 'kamikaze', targetY: 50 + Math.random() * 150, wiggleOffset: Math.random() * Math.PI * 2, shootTimer: 0 });
+                    let rand = Math.random();
+                    if (rand < 0.1) {
+                        // АСТЕРОИД
+                        enemies.push({ x: Math.random() * (canvas.width - 70), y: -70, width: 70, height: 70, speed: 1 + level*0.2, type: 'asteroid', hp: 10 + level*2, wiggleOffset: 0 });
+                    } else {
+                        let isShooter = level >= 2 && rand < 0.5;
+                        enemies.push({ x: Math.random() * (canvas.width - 50), y: -50, width: 50, height: 50, speed: (2 + Math.random() * 2) + (level * 0.4), type: isShooter ? 'shooter' : 'kamikaze', targetY: 50 + Math.random() * 150, wiggleOffset: Math.random() * Math.PI * 2, shootTimer: 0, hp: 1 });
+                    }
                 }
             }
 
@@ -277,9 +294,13 @@
                 enemyBullets[i].y += enemyBullets[i].speed; if (enemyBullets[i].vx) enemyBullets[i].x += enemyBullets[i].vx; 
                 if (enemyBullets[i].x < player.x + player.width && enemyBullets[i].x + enemyBullets[i].width > player.x &&
                     enemyBullets[i].y < player.y + player.height && enemyBullets[i].y + enemyBullets[i].height > player.y) {
-                    lives--; hitEffectTimer = 15; createExplosion(player.x + player.width/2, player.y + player.height/2, '#ff0000');
                     enemyBullets.splice(i, 1);
-                    if (lives <= 0) { gameState = 'GAME_OVER'; bgMusic.pause(); sendScoreToDatabase(score, sessionCoins); }
+                    if (shieldTimer > 0) {
+                        playSFX('boom', 0.1); // Щит отбивает
+                    } else {
+                        lives--; hitEffectTimer = 15; createExplosion(player.x + player.width/2, player.y + player.height/2, '#ff0000');
+                        if (lives <= 0) { gameState = 'GAME_OVER'; bgMusic.pause(); sendScoreToDatabase(score, sessionCoins); }
+                    }
                     continue;
                 }
                 if (enemyBullets[i].y > canvas.height) enemyBullets.splice(i, 1);
@@ -298,6 +319,7 @@
                 if (p.x < player.x + player.width && p.x + p.size > player.x && p.y < player.y + player.height && p.y + p.size > player.y) {
                     if (p.type === 'weapon' && weaponLevel < 5) weaponLevel++; 
                     if (p.type === 'helper') hasHelper = true;
+                    if (p.type === 'shield') shieldTimer = 300; // 5 секунд при 60fps
                     playSFX('shoot', 0.15); powerups.splice(i, 1); score += 50; continue;
                 }
                 if (p.y > canvas.height) powerups.splice(i, 1);
@@ -306,6 +328,7 @@
             for (let i = enemies.length - 1; i >= 0; i--) {
                 let e = enemies[i];
                 if (e.type === 'kamikaze') { e.y += e.speed; e.x += Math.sin((e.y / 50) + e.wiggleOffset) * (level * 0.4); } 
+                else if (e.type === 'asteroid') { e.y += e.speed; }
                 else if (e.type === 'shooter') {
                     if (e.y < e.targetY) e.y += e.speed;
                     else {
@@ -321,20 +344,30 @@
                 let hitPadding = 12;
                 if (e.x + hitPadding < player.x + player.width - hitPadding && e.x + e.width - hitPadding > player.x + hitPadding &&
                     e.y + hitPadding < player.y + player.height - hitPadding && e.y + e.height - hitPadding > player.y + hitPadding) {
-                    lives--; hitEffectTimer = 15; createExplosion(player.x + player.width/2, player.y + player.height/2, '#00ffcc'); enemies.splice(i, 1);
-                    if (lives <= 0) { gameState = 'GAME_OVER'; bgMusic.pause(); sendScoreToDatabase(score, sessionCoins); }
-                    continue;
+                    if (shieldTimer > 0) {
+                        e.hp -= 10; playSFX('boom', 0.1);
+                    } else {
+                        lives--; hitEffectTimer = 15; createExplosion(player.x + player.width/2, player.y + player.height/2, '#00ffcc'); e.hp = 0;
+                        if (lives <= 0) { gameState = 'GAME_OVER'; bgMusic.pause(); sendScoreToDatabase(score, sessionCoins); }
+                    }
                 }
 
                 let enemyHit = false;
                 for (let j = bullets.length - 1; j >= 0; j--) {
                     let b = bullets[j];
                     if (b.x < e.x + e.width && b.x + b.width > e.x && b.y < e.y + e.height && b.y + b.height > e.y) {
-                        score += 10; createExplosion(e.x + e.width/2, e.y + e.height/2, '#ffcc00'); spawnLoot(e.x + e.width/2, e.y + e.height/2); 
-                        enemies.splice(i, 1); bullets.splice(j, 1); enemyHit = true; break; 
+                        e.hp -= weaponLevel; createExplosion(b.x, b.y, '#ffcc00', 0.5); bullets.splice(j, 1);
+                        enemyHit = true; break; 
                     }
                 }
-                if (enemyHit) continue;
+                
+                if (e.hp <= 0) {
+                    score += (e.type === 'asteroid' ? 50 : 10); 
+                    createExplosion(e.x + e.width/2, e.y + e.height/2, '#ffcc00'); 
+                    if (e.type === 'asteroid') spawnLoot(e.x + e.width/2, e.y + e.height/2, 3); // 3 монеты с астероида
+                    else spawnLoot(e.x + e.width/2, e.y + e.height/2); 
+                    enemies.splice(i, 1);
+                }
             }
 
             if (isTouching && Date.now() - lastShootTime > shootDelay) {
@@ -361,70 +394,88 @@
 
         function draw() {
             let bgR = 20, bgG = 5, bgB = 15;
-            if (boss) { bgR = 100; bgG = 0; bgB = 0; }
+            if (inventory.currentTheme === 'retro') { bgR = 0; bgG = 0; bgB = 0; } // Черный для ретро
+            else if (boss) { bgR = 100; bgG = 0; bgB = 0; }
             else if (level > 10) { bgR = 40; bgG = 10; bgB = 60; } 
             else if (level > 5) { bgR = 5; bgG = 40; bgB = 50; }  
             else { bgR = Math.min(20 + level * 8, 80); bgG = 5; bgB = Math.max(15 - level * 2, 0); }
 
             ctx.fillStyle = `rgba(${bgR}, ${bgG}, ${bgB}, 0.8)`; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            let fontStyle = inventory.currentTheme === 'retro' ? 'Press Start 2P, Courier New' : 'Courier New';
+
             stars.forEach(s => { ctx.fillStyle = s.color; ctx.globalAlpha = s.size / 3; if (gameState === 'LEVEL_TRANSITION') ctx.globalAlpha = 1.0; ctx.fillRect(s.x, s.y, s.size, s.size * (gameState === 'LEVEL_TRANSITION' ? 5 : 1)); });
             ctx.globalAlpha = 1.0;
 
-            if (gameState === 'MENU' || gameState === 'PROFILE') {
-                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Courier New'; ctx.fillText('FLY INVADERS', canvas.width / 2, canvas.height / 3);
-                ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer)); ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 24px Courier New'; ctx.fillText('>>> ИГРАТЬ <<<', canvas.width / 2, canvas.height / 2);
+            if (gameState === 'LOADING') {
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = `bold 24px ${fontStyle}`;
+                ctx.fillText('Связь с базой...', canvas.width / 2, canvas.height / 2);
+            }
+            else if (gameState === 'DAILY_BONUS') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.9)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = `bold 32px ${fontStyle}`;
+                ctx.fillText('ПОДАРОК!', canvas.width / 2, canvas.height / 2 - 60);
+                
+                ctx.fillStyle = '#fff'; ctx.font = `20px ${fontStyle}`;
+                ctx.fillText('За ежедневный вход:', canvas.width / 2, canvas.height / 2 - 10);
+                
+                ctx.fillStyle = '#00ffcc'; ctx.font = `bold 36px ${fontStyle}`;
+                ctx.fillText('+500 🪙', canvas.width / 2, canvas.height / 2 + 40);
+
+                ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer));
+                ctx.fillStyle = '#ff3366'; ctx.font = `20px ${fontStyle}`;
+                ctx.fillText('[ ЗАБРАТЬ ]', canvas.width / 2, canvas.height / 2 + 120);
+                ctx.globalAlpha = 1.0;
+            }
+            else if (gameState === 'MENU' || gameState === 'PROFILE') {
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = `bold 42px ${fontStyle}`; ctx.fillText('FLY INVADERS', canvas.width / 2, canvas.height / 3 - 20);
+                ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer)); ctx.fillStyle = '#00ffcc'; ctx.font = `bold 24px ${fontStyle}`; ctx.fillText('>>> ИГРАТЬ <<<', canvas.width / 2, canvas.height / 2);
                 ctx.globalAlpha = 1.0;
                 
-                ctx.fillStyle = '#ff3366'; ctx.font = 'bold 24px Courier New'; ctx.fillText('[ МАГАЗИН ]', canvas.width / 2, canvas.height / 2 + 80);
-                ctx.fillStyle = '#666666'; ctx.font = '18px Courier New'; ctx.fillText(`[ РЕКОРД: ${bestScore} | ПРОФИЛЬ ]`, canvas.width / 2, canvas.height / 2 + 130);
-                ctx.fillStyle = '#00ffcc'; ctx.font = '16px Courier New'; ctx.fillText(`Пилот: ${nickname}`, canvas.width / 2, canvas.height / 2 + 160);
+                ctx.fillStyle = '#ff3366'; ctx.font = `bold 24px ${fontStyle}`; ctx.fillText('[ МАГАЗИН ]', canvas.width / 2, canvas.height / 2 + 80);
+                ctx.fillStyle = '#666666'; ctx.font = `16px ${fontStyle}`; ctx.fillText(`[ РЕКОРД: ${bestScore} ]`, canvas.width / 2, canvas.height / 2 + 130);
+                
+                // Профиль блок
+                ctx.fillStyle = '#00ffcc'; ctx.font = `18px ${fontStyle}`; ctx.fillText(`Пилот: ${nickname}`, canvas.width / 2, canvas.height / 2 + 170);
+                ctx.fillStyle = '#ffaa00'; ctx.font = `14px ${fontStyle}`; ctx.fillText(`[ ✏️ ИЗМЕНИТЬ ]`, canvas.width / 2, canvas.height / 2 + 195);
+                
                 drawUIButtons();
             } 
             else if (gameState === 'SHOP') {
-                ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = 'bold 36px Courier New'; ctx.fillText('МАГАЗИН', canvas.width / 2, 60);
-                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right'; ctx.font = 'bold 20px Courier New'; ctx.fillText(`Банк: ${bankCoins} 🪙`, canvas.width - 20, 30); 
+                ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = `bold 32px ${fontStyle}`; ctx.fillText('МАГАЗИН', canvas.width / 2, 50);
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right'; ctx.font = `bold 18px ${fontStyle}`; ctx.fillText(`Банк: ${bankCoins} 🪙`, canvas.width - 20, 30); 
 
-                // ОТРИСОВКА ТОВАРОВ
                 shopItems.forEach(item => {
-                    ctx.fillStyle = '#222'; ctx.fillRect(20, item.y, canvas.width - 40, 80);
-                    ctx.fillStyle = '#00ffcc'; ctx.textAlign = 'left'; ctx.font = '18px Courier New';
-                    ctx.fillText(item.name, 40, item.y + 30);
-                    
-                    ctx.fillStyle = '#aaa'; ctx.font = '12px Courier New';
-                    ctx.fillText(item.desc, 40, item.y + 50);
+                    ctx.fillStyle = '#222'; ctx.fillRect(20, item.y, canvas.width - 40, 65); // Меньше высота
+                    ctx.fillStyle = item.type === 'theme' || item.type === 'premium' ? '#ff33ff' : '#00ffcc'; 
+                    ctx.textAlign = 'left'; ctx.font = `16px ${fontStyle}`;
+                    ctx.fillText(item.name, 35, item.y + 25);
+                    ctx.fillStyle = '#aaa'; ctx.font = `12px ${fontStyle}`;
+                    ctx.fillText(item.desc, 35, item.y + 45);
 
-                    // Проверяем куплен ли предмет
-                    let isBought = false;
-                    let isActive = false;
+                    let isBought = false; let isActive = false;
                     if (item.id === 'skin_neon' && inventory.skins.includes('neon')) { isBought = true; isActive = inventory.currentSkin === 'neon'; }
+                    if (item.id === 'theme_retro' && inventory.themes.includes('retro')) { isBought = true; isActive = inventory.currentTheme === 'retro'; }
                     if (item.id === 'perm_w2' && inventory.permWeapon >= 2) isBought = true;
                     if (item.id === 'perm_help' && inventory.permHelper) isBought = true;
 
-                    ctx.font = 'bold 16px Courier New';
-                    if (isBought) {
-                        if (item.id === 'skin_neon') {
+                    ctx.font = `bold 14px ${fontStyle}`;
+                    if (item.type === 'premium') {
+                        ctx.fillStyle = '#aaa'; ctx.fillText(item.price, canvas.width - 90, item.y + 35);
+                    } else if (isBought) {
+                        if (item.type === 'skin' || item.type === 'theme') {
                             ctx.fillStyle = isActive ? '#00ff00' : '#ffaa00';
-                            ctx.fillText(isActive ? 'ВЫБРАНО' : 'НАДЕТЬ', 40, item.y + 75);
+                            ctx.fillText(isActive ? 'ВЫБРАНО' : 'НАДЕТЬ', canvas.width - 110, item.y + 35);
                         } else {
-                            ctx.fillStyle = '#00ff00';
-                            ctx.fillText('КУПЛЕНО', 40, item.y + 75);
+                            ctx.fillStyle = '#00ff00'; ctx.fillText('КУПЛЕНО', canvas.width - 110, item.y + 35);
                         }
                     } else {
-                        ctx.fillStyle = '#ffcc00';
-                        ctx.fillText(`Цена: ${item.price} 🪙`, 40, item.y + 75);
+                        ctx.fillStyle = '#ffcc00'; ctx.fillText(`${item.price} 🪙`, canvas.width - 100, item.y + 35);
                     }
                 });
 
-                // Вывод сообщения об ошибке покупки
-                if (shopMsgTimer > 0) {
-                    ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 20px Courier New';
-                    ctx.fillText(shopMsg, canvas.width / 2, 450);
-                    shopMsgTimer--;
-                }
-
-                ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 24px Courier New';
-                ctx.fillText('<<< НАЗАД', canvas.width / 2, canvas.height - 40);
+                if (shopMsgTimer > 0) { ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = `bold 18px ${fontStyle}`; ctx.fillText(shopMsg, canvas.width / 2, canvas.height - 80); shopMsgTimer--; }
+                ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = `bold 24px ${fontStyle}`; ctx.fillText('<<< НАЗАД', canvas.width / 2, canvas.height - 30);
             }
             else if (gameState === 'PLAYING' || gameState === 'GAME_OVER' || gameState === 'LEVEL_TRANSITION') {
                 if (hitEffectTimer > 0) { ctx.fillStyle = `rgba(255, 0, 0, ${hitEffectTimer / 30})`; ctx.fillRect(0, 0, canvas.width, canvas.height); hitEffectTimer--; }
@@ -433,43 +484,60 @@
                 ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
 
                 collectibles.forEach(c => { ctx.fillStyle = '#ffcc00'; ctx.shadowBlur = 10; ctx.shadowColor = '#ffcc00'; let squish = Math.sin(coinAnimTimer) * c.size/2; ctx.beginPath(); ctx.ellipse(c.x + c.size/2, c.y + c.size/2, Math.abs(squish) + 2, c.size/2, 0, 0, Math.PI*2); ctx.fill(); });
-                powerups.forEach(p => { ctx.fillStyle = p.type === 'weapon' ? '#00ffcc' : '#ffcc00'; ctx.shadowBlur = 10; ctx.shadowColor = ctx.fillStyle; ctx.beginPath(); ctx.arc(p.x + p.size/2, p.y + p.size/2, p.size/2, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center'; ctx.fillText(p.type === 'weapon' ? 'W' : 'H', p.x + p.size/2, p.y + p.size/2 + 4); });
+                powerups.forEach(p => { 
+                    if (p.type === 'shield') ctx.fillStyle = '#00aaff';
+                    else ctx.fillStyle = p.type === 'weapon' ? '#00ffcc' : '#ffcc00'; 
+                    ctx.shadowBlur = 10; ctx.shadowColor = ctx.fillStyle; ctx.beginPath(); ctx.arc(p.x + p.size/2, p.y + p.size/2, p.size/2, 0, Math.PI*2); ctx.fill(); 
+                    ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center'; 
+                    let letter = 'W'; if(p.type === 'helper') letter = 'H'; if(p.type === 'shield') letter = 'S';
+                    ctx.fillText(letter, p.x + p.size/2, p.y + p.size/2 + 4); 
+                });
                 ctx.shadowBlur = 0;
 
                 bullets.forEach(b => { ctx.fillStyle = b.color; ctx.shadowBlur = 10; ctx.shadowColor = b.color; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.width, b.height, 3); ctx.fill(); });
                 enemyBullets.forEach(b => { ctx.fillStyle = '#ff0000'; ctx.shadowBlur = 10; ctx.shadowColor = '#ff0000'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.width, b.height, 3); ctx.fill(); });
                 ctx.shadowBlur = 0;
 
-                enemies.forEach(e => { if (enemyImg.complete) ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height); });
+                enemies.forEach(e => { 
+                    if (e.type === 'asteroid') {
+                        ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(e.x + e.width/2, e.y + e.height/2, e.width/2, 0, Math.PI*2); ctx.fill();
+                        ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(e.x + e.width/3, e.y + e.height/3, e.width/6, 0, Math.PI*2); ctx.fill(); // кратер
+                    } else {
+                        if (enemyImg.complete) ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height); 
+                    }
+                });
 
                 if (boss && boss.state !== 'entering') {
                     ctx.fillStyle = '#ff3366'; ctx.fillRect(boss.x, boss.y, boss.width, boss.height); 
-                    ctx.fillStyle = '#333'; ctx.fillRect(canvas.width/2 - 100, 20, 200, 15); ctx.fillStyle = '#ff0000'; ctx.fillRect(canvas.width/2 - 100, 20, 200 * (boss.hp / boss.maxHp), 15); ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center'; ctx.fillText('ЛЕВИАФАН', canvas.width/2, 32);
+                    ctx.fillStyle = '#333'; ctx.fillRect(canvas.width/2 - 100, 20, 200, 15); ctx.fillStyle = '#ff0000'; ctx.fillRect(canvas.width/2 - 100, 20, 200 * (boss.hp / boss.maxHp), 15); ctx.fillStyle = '#fff'; ctx.font = `12px ${fontStyle}`; ctx.textAlign = 'center'; ctx.fillText('ЛЕВИАФАН', canvas.width/2, 32);
                 }
 
                 if ((gameState === 'PLAYING' || gameState === 'LEVEL_TRANSITION' || hitEffectTimer > 0) && player.y < canvas.height + 50) {
-                    
-                    // ЭФФЕКТ НЕОНОВОГО СКИНА
-                    if (inventory.currentSkin === 'neon') {
-                        ctx.shadowBlur = 20; ctx.shadowColor = '#00ffff';
+                    // ОТРИСОВКА ЩИТА
+                    if (shieldTimer > 0) {
+                        ctx.beginPath(); ctx.arc(player.x + player.width/2, player.y + player.height/2, 45, 0, Math.PI*2);
+                        ctx.strokeStyle = `rgba(0, 170, 255, ${Math.abs(Math.sin(shieldTimer/10)) + 0.5})`; ctx.lineWidth = 4; ctx.stroke();
+                        ctx.fillStyle = 'rgba(0, 170, 255, 0.2)'; ctx.fill();
                     }
-                    
+
+                    if (inventory.currentSkin === 'neon') { ctx.shadowBlur = 20; ctx.shadowColor = '#00ffff'; }
                     if (playerImg.complete) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
-                    ctx.shadowBlur = 0; // Сбрасываем свечение
+                    ctx.shadowBlur = 0; 
 
                     if (hasHelper) { let hx = player.x + player.width/2 + Math.cos(helperAngle) * 60; let hy = player.y + player.height/2 + Math.sin(helperAngle) * 60; ctx.fillStyle = '#ffcc00'; ctx.beginPath(); ctx.arc(hx, hy, 10, 0, Math.PI*2); ctx.fill(); }
                 }
 
-                if (gameState === 'LEVEL_TRANSITION') { ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = 'bold 32px Courier New'; ctx.fillText(`УРОВЕНЬ ПРОЙДЕН`, canvas.width / 2, canvas.height / 2 - 20); ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 20px Courier New'; ctx.fillText(`ПОЛЕТ К УРОВНЮ ${level + 1}...`, canvas.width / 2, canvas.height / 2 + 20); }
+                if (gameState === 'LEVEL_TRANSITION') { ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = `bold 32px ${fontStyle}`; ctx.fillText(`УРОВЕНЬ ПРОЙДЕН`, canvas.width / 2, canvas.height / 2 - 20); ctx.fillStyle = '#00ffcc'; ctx.font = `bold 20px ${fontStyle}`; ctx.fillText(`ПОЛЕТ К УРОВНЮ ${level + 1}...`, canvas.width / 2, canvas.height / 2 + 20); }
 
-                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px Courier New'; ctx.textAlign = 'left'; ctx.fillText(`SCORE: ${score}`, 15, 35); ctx.fillStyle = '#00ffcc'; ctx.fillText(`MAP: ${level}`, 15, 60);
+                ctx.fillStyle = '#ffffff'; ctx.font = `bold 20px ${fontStyle}`; ctx.textAlign = 'left'; ctx.fillText(`SCORE: ${score}`, 15, 35); ctx.fillStyle = '#00ffcc'; ctx.fillText(`MAP: ${level}`, 15, 60);
                 
-                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right'; ctx.fillText(`🪙 ${bankCoins + sessionCoins}`, canvas.width - 15, 60);
+                // ИСПРАВЛЕНА МАТЕМАТИКА МОНЕТ
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right'; ctx.fillText(`🪙 ${Number(bankCoins) + Number(sessionCoins)}`, canvas.width - 15, 60);
                 ctx.fillText('❤️'.repeat(Math.max(0, lives)), canvas.width - 15, 35);
                 drawUIButtons();
 
                 if (gameState === 'GAME_OVER') {
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Courier New'; ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Courier New'; ctx.fillText(`Счет: ${score} (Map ${level})`, canvas.width / 2, canvas.height / 2 + 20); ctx.fillStyle = '#ffcc00'; ctx.fillText(`Добыто: +${sessionCoins} 🪙`, canvas.width / 2, canvas.height / 2 + 50); ctx.font = '18px Courier New'; ctx.fillStyle = '#00ffcc'; ctx.fillText('Тапни, чтобы выйти в меню', canvas.width / 2, canvas.height / 2 + 100);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = `bold 48px ${fontStyle}`; ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 40); ctx.fillStyle = '#ffffff'; ctx.font = `bold 24px ${fontStyle}`; ctx.fillText(`Счет: ${score} (Map ${level})`, canvas.width / 2, canvas.height / 2 + 20); ctx.fillStyle = '#ffcc00'; ctx.fillText(`Добыто: +${sessionCoins} 🪙`, canvas.width / 2, canvas.height / 2 + 50); ctx.font = `18px ${fontStyle}`; ctx.fillStyle = '#00ffcc'; ctx.fillText('Тапни, чтобы выйти в меню', canvas.width / 2, canvas.height / 2 + 100);
                 }
             }
             update(); requestAnimationFrame(draw);
@@ -478,65 +546,63 @@
         canvas.addEventListener('touchstart', (e) => {
             initWebAudio(); 
             const touch = e.touches[0];
+
+            if (gameState === 'DAILY_BONUS') {
+                bankCoins += 500;
+                sendScoreToDatabase(bestScore, 500); // Сохраняем бонус
+                playSFX('shoot', 0.2);
+                gameState = 'MENU';
+                return;
+            }
             
             if (touch.clientX >= btnMusic.x && touch.clientX <= btnMusic.x + btnMusic.w && touch.clientY >= btnMusic.y && touch.clientY <= btnMusic.y + btnMusic.h) { 
-                isMusicMuted = !isMusicMuted; 
-                bgMusic.muted = isMusicMuted; 
-                if (!isMusicMuted && bgMusic.paused) bgMusic.play().catch(()=>{});
-                return; 
+                isMusicMuted = !isMusicMuted; bgMusic.muted = isMusicMuted; 
+                if (!isMusicMuted && bgMusic.paused) bgMusic.play().catch(()=>{}); return; 
             }
             if (touch.clientX >= btnSfx.x && touch.clientX <= btnSfx.x + btnSfx.w && touch.clientY >= btnSfx.y && touch.clientY <= btnSfx.y + btnSfx.h) { 
-                isSfxMuted = !isSfxMuted; 
-                return; 
+                isSfxMuted = !isSfxMuted; return; 
             }
 
             if (gameState === 'MENU') {
                 if (touch.clientY > canvas.height/2 + 50 && touch.clientY < canvas.height/2 + 100) { gameState = 'SHOP'; return; }
-                if (touch.clientY > canvas.height/2 + 100 && touch.clientY < canvas.height/2 + 150) { 
-                    gameState = 'PROFILE'; 
-                    document.getElementById('nicknameInput').value = nickname;
-                    document.getElementById('profileModal').style.display = 'flex';
-                    return; 
+                // КЛИК ПО "ИЗМЕНИТЬ"
+                if (touch.clientY > canvas.height/2 + 175 && touch.clientY < canvas.height/2 + 215) { 
+                    gameState = 'PROFILE'; document.getElementById('nicknameInput').value = nickname; document.getElementById('profileModal').style.display = 'flex'; return; 
                 }
                 resetGame(); return; 
             }
             
             if (gameState === 'SHOP') {
-                // ЛОГИКА КЛИКОВ ПО ТОВАРАМ
-                let clickedItem = shopItems.find(i => touch.clientY > i.y && touch.clientY < i.y + 80);
+                let clickedItem = shopItems.find(i => touch.clientY > i.y && touch.clientY < i.y + 65);
                 if (clickedItem) {
+                    if (clickedItem.type === 'premium') { shopMsg = "СКОРО В ОБНОВЛЕНИИ!"; shopMsgTimer = 60; return; }
+
                     let isBought = false;
                     if (clickedItem.id === 'skin_neon' && inventory.skins.includes('neon')) isBought = true;
+                    if (clickedItem.id === 'theme_retro' && inventory.themes.includes('retro')) isBought = true;
                     if (clickedItem.id === 'perm_w2' && inventory.permWeapon >= 2) isBought = true;
                     if (clickedItem.id === 'perm_help' && inventory.permHelper) isBought = true;
 
                     if (isBought) {
-                        // Если это скин - надеваем/снимаем
-                        if (clickedItem.id === 'skin_neon') {
-                            inventory.currentSkin = inventory.currentSkin === 'neon' ? 'default' : 'neon';
-                            saveInv(); playSFX('shoot', 0.1);
-                        }
+                        if (clickedItem.type === 'skin') { inventory.currentSkin = inventory.currentSkin === 'neon' ? 'default' : 'neon'; saveInv(); playSFX('shoot', 0.1); }
+                        if (clickedItem.type === 'theme') { inventory.currentTheme = inventory.currentTheme === 'retro' ? 'default' : 'retro'; saveInv(); playSFX('shoot', 0.1); }
                     } else {
-                        // ПОКУПКА
                         if (bankCoins >= clickedItem.price) {
-                            bankCoins -= clickedItem.price; // Списываем локально
-                            sendScoreToDatabase(bestScore, -clickedItem.price); // СПИСЫВАЕМ НА СЕРВЕРЕ (ХИТРЫЙ ТРЮК)
+                            bankCoins -= clickedItem.price; 
+                            sendScoreToDatabase(bestScore, -clickedItem.price); 
                             
                             if (clickedItem.id === 'skin_neon') inventory.skins.push('neon');
+                            if (clickedItem.id === 'theme_retro') inventory.themes.push('retro');
                             if (clickedItem.id === 'perm_w2') inventory.permWeapon = 2;
                             if (clickedItem.id === 'perm_help') inventory.permHelper = true;
                             
                             saveInv(); playSFX('boom', 0.1);
-                        } else {
-                            shopMsg = "НЕ ХВАТАЕТ МОНЕТ!";
-                            shopMsgTimer = 60;
-                            playSFX('shoot', 0.05); // Звук ошибки
-                        }
+                        } else { shopMsg = "НЕ ХВАТАЕТ МОНЕТ!"; shopMsgTimer = 60; playSFX('shoot', 0.05); }
                     }
                     return;
                 }
 
-                if (touch.clientY > canvas.height - 80) { gameState = 'MENU'; return; }
+                if (touch.clientY > canvas.height - 60) { gameState = 'MENU'; return; }
             }
             if (gameState === 'GAME_OVER') { gameState = 'MENU'; return; }
             if (gameState === 'PROFILE') return; 
