@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tower Defense</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background-color: #2ecc71; overflow: hidden; touch-action: none; font-family: 'Trebuchet MS', Arial, sans-serif; }
+        canvas { display: block; }
+        
+        #backBtn {
+            position: absolute; top: 15px; left: 15px;
+            background: linear-gradient(to bottom, #ffcc00, #f39c12); color: #4a2511;
+            border: 2px solid #fff; border-radius: 10px;
+            padding: 8px 15px; font-weight: 900; font-size: 14px;
+            z-index: 100; cursor: pointer; text-decoration: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); text-transform: uppercase;
+        }
+        #backBtn:active { transform: translateY(2px); box-shadow: 0 2px 3px rgba(0,0,0,0.3); }
+
+        #buildUI {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 20px;
+            color: white; font-weight: bold; text-align: center; border: 2px solid #ffcc00;
+            pointer-events: none; /* Чтобы не мешал тапать под ним */
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    <button id="backBtn" onclick="window.location.href='../index.html'">◀ В МЕНЮ</button>
+    <div id="buildUI">Тапни по траве: Пушка (50g)</div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        tg.setHeaderColor('#2ecc71');
+
+        const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "General", username: "Guest" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+
+        let bankCoins = 0;       
+        let nickname = user.username || user.first_name || "Генерал";
+
+        async function loadUserData() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/get_user`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: user.id, username: nickname })
+                });
+                const data = await res.json();
+                bankCoins = Number(data.coins) || 0;
+            } catch(e) { console.error(e); }
+        }
+        
+        async function sendScoreToDatabase(collectedCoins) {
+            try {
+                const res = await fetch(`${BACKEND_URL}/save_score`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: user.id, username: nickname, score: 0, coins: collectedCoins }) 
+                });
+                const result = await res.json();
+                bankCoins = Number(result.coins_total); 
+            } catch (e) {}
+        }
+        loadUserData();
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Звуки
+        let audioCtx; const sfxBuffers = {};
+        async function initWebAudio() {
+            if (audioCtx) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            const loadBuffer = async (url, key) => {
+                try {
+                    const res = await fetch(url); const buf = await res.arrayBuffer();
+                    sfxBuffers[key] = await audioCtx.decodeAudioData(buf);
+                } catch (e) {}
+            };
+            await Promise.all([
+                loadBuffer('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3', 'shoot'), 
+                loadBuffer('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3', 'boom')    
+            ]);
+        }
+        function playSFX(key, vol) {
+            if (!audioCtx || !sfxBuffers[key]) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const source = audioCtx.createBufferSource(); source.buffer = sfxBuffers[key];
+            const gainNode = audioCtx.createGain(); gainNode.gain.value = vol; 
+            source.connect(gainNode); gainNode.connect(audioCtx.destination); source.start(0);
+        }
+
+        // ПУТЬ ВРАГОВ (Вейвпоинты)
+        const pathW = 40; // Ширина дороги
+        const waypoints = [
+            { x: canvas.width * 0.2, y: -50 },
+            { x: canvas.width * 0.2, y: canvas.height * 0.3 },
+            { x: canvas.width * 0.8, y: canvas.height * 0.3 },
+            { x: canvas.width * 0.8, y: canvas.height * 0.7 },
+            { x: canvas.width * 0.4, y: canvas.height * 0.7 },
+            { x: canvas.width * 0.4, y: canvas.height + 50 } // База
+        ];
+
+        // ИГРОВЫЕ ПЕРЕМЕННЫЕ
+        let gameState = 'PLAYING'; // PLAYING, GAME_OVER
+        let lives = 10;
+        let inGameGold = 150; // Стартовое золото для постройки
+        let sessionGlobalCoins = 0; // Монеты, которые пойдут в Хаб
+        let wave = 1;
+        
+        let enemies = [];
+        let towers = [];
+        let bullets = [];
+        let particles = [];
+        let floatTexts = [];
+
+        // СПАВНЕР ВОЛН
+        let waveTimer = 100;
+        let enemiesToSpawn = 5;
+        let spawnCooldown = 0;
+
+        function createExplosion(x, y, color) {
+            playSFX('boom', 0.1);
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x: x, y: y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6,
+                    life: 1.0, decay: 0.03 + Math.random() * 0.03, color: color, size: Math.random() * 4 + 2
+                });
+            }
+        }
+
+        function createFloatText(x, y, text, color) {
+            floatTexts.push({ x: x, y: y, text: text, color: color, life: 1.0, vy: -1 });
+        }
+
+        // ПРОВЕРКА: Можно ли тут строить? (Нельзя на дороге и на других башнях)
+        function distToSegmentSquared(p, v, w) {
+            let l2 = (v.x - w.x)**2 + (v.y - w.y)**2;
+            if (l2 === 0) return (p.x - v.x)**2 + (p.y - v.y)**2;
+            let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            return (p.x - (v.x + t * (w.x - v.x)))**2 + (p.y - (v.y + t * (w.y - v.y)))**2;
+        }
+
+        function isValidBuildSpot(tx, ty) {
+            // Проверка с другими башнями
+            for (let t of towers) {
+                let dist = Math.hypot(tx - t.x, ty - t.y);
+                if (dist < 40) return false;
+            }
+            // Проверка с дорогой
+            for (let i = 0; i < waypoints.length - 1; i++) {
+                let distSq = distToSegmentSquared({x: tx, y: ty}, waypoints[i], waypoints[i+1]);
+                if (Math.sqrt(distSq) < pathW/2 + 20) return false; 
+            }
+            return true;
+        }
+
+        function spawnEnemy() {
+            let hp = 30 + (wave * 15); // Жиреют с каждой волной
+            enemies.push({
+                x: waypoints[0].x, y: waypoints[0].y,
+                targetIdx: 1, speed: 1.5 + (wave * 0.1),
+                hp: hp, maxHp: hp, color: '#8e44ad' // Зеленые гоблины
+            });
+        }
+
+        function nextWave() {
+            wave++;
+            enemiesToSpawn = 5 + Math.floor(wave * 1.5);
+            waveTimer = 300; // Пауза между волнами
+            
+            // Награда за волну в глобальный банк!
+            sessionGlobalCoins += 10;
+            createFloatText(canvas.width/2, 100, "+10 🪙 В БАНК!", "#ffcc00");
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            // Логика волн
+            if (enemiesToSpawn > 0) {
+                if (waveTimer > 0) waveTimer--;
+                else {
+                    spawnCooldown--;
+                    if (spawnCooldown <= 0) {
+                        spawnEnemy();
+                        enemiesToSpawn--;
+                        spawnCooldown = 60; // Интервал между врагами в волне
+                    }
+                }
+            } else if (enemies.length === 0) {
+                nextWave();
+            }
+
+            // Обновление частиц
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i]; p.x += p.vx; p.y += p.vy; p.life -= p.decay;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+            for (let i = floatTexts.length - 1; i >= 0; i--) {
+                let ft = floatTexts[i]; ft.y += ft.vy; ft.life -= 0.02;
+                if (ft.life <= 0) floatTexts.splice(i, 1);
+            }
+
+            // Логика врагов
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                let e = enemies[i];
+                let target = waypoints[e.targetIdx];
+                
+                let dx = target.x - e.x;
+                let dy = target.y - e.y;
+                let dist = Math.hypot(dx, dy);
+
+                if (dist < e.speed) {
+                    e.x = target.x; e.y = target.y;
+                    e.targetIdx++;
+                    if (e.targetIdx >= waypoints.length) {
+                        // Враг дошел до базы
+                        lives--;
+                        createExplosion(e.x, e.y, '#ff3366');
+                        enemies.splice(i, 1);
+                        if (lives <= 0) {
+                            gameState = 'GAME_OVER';
+                            sendScoreToDatabase(sessionGlobalCoins);
+                        }
+                        continue;
+                    }
+                } else {
+                    e.x += (dx / dist) * e.speed;
+                    e.y += (dy / dist) * e.speed;
+                }
+            }
+
+            // Логика башен (Поиск цели и стрельба)
+            towers.forEach(t => {
+                if (t.cooldown > 0) t.cooldown--;
+
+                // Ищем ближайшего врага
+                let closestEnemy = null; let minDist = t.range;
+                enemies.forEach(e => {
+                    let d = Math.hypot(e.x - t.x, e.y - t.y);
+                    if (d < minDist) { minDist = d; closestEnemy = e; }
+                });
+
+                if (closestEnemy) {
+                    // Поворачиваем пушку к врагу
+                    t.angle = Math.atan2(closestEnemy.y - t.y, closestEnemy.x - t.x);
+                    
+                    if (t.cooldown <= 0) {
+                        // Выстрел!
+                        playSFX('shoot', 0.05);
+                        bullets.push({
+                            x: t.x + Math.cos(t.angle)*15, y: t.y + Math.sin(t.angle)*15,
+                            target: closestEnemy, speed: 6, damage: 15
+                        });
+                        t.cooldown = t.fireRate;
+                        
+                        // Эффект выстрела
+                        particles.push({x: t.x + Math.cos(t.angle)*20, y: t.y + Math.sin(t.angle)*20, vx:0, vy:0, life:1, decay:0.1, color:'#ffff00', size: 5});
+                    }
+                }
+            });
+
+            // Логика пуль (самонаведение)
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                let b = bullets[i];
+                if (!enemies.includes(b.target)) {
+                    bullets.splice(i, 1); continue; // Цель умерла, пуля пропадает
+                }
+                
+                let dx = b.target.x - b.x; let dy = b.target.y - b.y;
+                let dist = Math.hypot(dx, dy);
+
+                if (dist < b.speed) {
+                    // ПОПАДАНИЕ
+                    b.target.hp -= b.damage;
+                    particles.push({x: b.target.x, y: b.target.y, vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2, life:1, decay:0.1, color:'#fff', size:3});
+                    
+                    if (b.target.hp <= 0) {
+                        inGameGold += 10;
+                        score += 15;
+                        createExplosion(b.target.x, b.target.y, '#f1c40f');
+                        createFloatText(b.target.x, b.target.y, "+10g", "#f1c40f");
+                        let eIdx = enemies.indexOf(b.target);
+                        if (eIdx > -1) enemies.splice(eIdx, 1);
+                    }
+                    bullets.splice(i, 1);
+                } else {
+                    b.x += (dx / dist) * b.speed;
+                    b.y += (dy / dist) * b.speed;
+                }
+            }
+        }
+
+        function draw() {
+            // Фон (Трава)
+            ctx.fillStyle = '#27ae60'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Дорога
+            ctx.strokeStyle = '#d35400'; ctx.lineWidth = pathW; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(waypoints[0].x, waypoints[0].y);
+            for (let i = 1; i < waypoints.length; i++) ctx.lineTo(waypoints[i].x, waypoints[i].y);
+            ctx.stroke();
+            
+            // Внутренняя светлая часть дороги
+            ctx.strokeStyle = '#e67e22'; ctx.lineWidth = pathW - 10;
+            ctx.stroke();
+
+            // База (Домик в конце)
+            let baseW = waypoints[waypoints.length-1];
+            ctx.fillStyle = '#34495e'; ctx.fillRect(baseW.x - 30, baseW.y - 30, 60, 60);
+            ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.moveTo(baseW.x - 35, baseW.y - 30); ctx.lineTo(baseW.x, baseW.y - 60); ctx.lineTo(baseW.x + 35, baseW.y - 30); ctx.fill();
+
+            // Башни
+            towers.forEach(t => {
+                // Основание
+                ctx.fillStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(t.x, t.y, 18, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 3; ctx.stroke();
+                
+                // Вращающаяся пушка
+                ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(t.angle);
+                ctx.fillStyle = '#bdc3c7'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#2c3e50'; ctx.fillRect(0, -4, 20, 8); // Дуло
+                ctx.restore();
+            });
+
+            // Враги
+            enemies.forEach(e => {
+                // Тень
+                ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.arc(e.x+2, e.y+2, 12, 0, Math.PI*2); ctx.fill();
+                
+                // Тело (Гоблин)
+                ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, 12, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 2; ctx.stroke();
+
+                // Полоска ХП
+                ctx.fillStyle = '#c0392b'; ctx.fillRect(e.x - 10, e.y - 20, 20, 4);
+                ctx.fillStyle = '#2ecc71'; ctx.fillRect(e.x - 10, e.y - 20, 20 * (e.hp / e.maxHp), 4);
+            });
+
+            // Пули
+            bullets.forEach(b => {
+                ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill();
+            });
+
+            // Эффекты
+            particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life); ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); });
+            ctx.globalAlpha = 1.0;
+            floatTexts.forEach(ft => {
+                ctx.fillStyle = ft.color; ctx.globalAlpha = Math.max(0, ft.life);
+                ctx.font = 'bold 18px Trebuchet MS'; ctx.textAlign = 'center';
+                ctx.shadowBlur = 3; ctx.shadowColor = '#000'; ctx.fillText(ft.text, ft.x, ft.y); ctx.shadowBlur = 0;
+            });
+            ctx.globalAlpha = 1.0;
+
+            // UI
+            ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, canvas.width, 50);
+            
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 16px Trebuchet MS'; ctx.textAlign = 'left';
+            ctx.fillText(`ВОЛНА: ${wave}`, 15, 30);
+            
+            ctx.fillStyle = '#f1c40f'; ctx.textAlign = 'center';
+            ctx.fillText(`ЗОЛОТО: ${inGameGold}g`, canvas.width/2, 30);
+
+            ctx.fillStyle = '#e74c3c'; ctx.textAlign = 'right';
+            ctx.fillText(`БАЗА: ${lives} ❤️`, canvas.width - 15, 30);
+
+            if (gameState === 'GAME_OVER') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height); 
+                ctx.fillStyle = '#e74c3c'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Trebuchet MS'; 
+                ctx.fillText('БАЗА УНИЧТОЖЕНА', canvas.width / 2, canvas.height / 2 - 40); 
+                
+                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Trebuchet MS'; 
+                ctx.fillText(`Пережито волн: ${wave}`, canvas.width / 2, canvas.height / 2 + 20); 
+                
+                ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 28px Trebuchet MS'; 
+                ctx.fillText(`Добыто в Хаб: +${sessionGlobalCoins} 🪙`, canvas.width / 2, canvas.height / 2 + 70); 
+                
+                ctx.font = '18px Trebuchet MS'; ctx.fillStyle = '#00ffcc'; 
+                ctx.fillText('Тапни, чтобы начать заново', canvas.width / 2, canvas.height / 2 + 130);
+            }
+
+            update(); requestAnimationFrame(draw);
+        }
+
+        // ОБРАБОТКА ТАПОВ (ПОСТРОЙКА БАШЕН)
+        window.addEventListener('touchstart', (e) => {
+            initWebAudio();
+            if (e.target.id === 'backBtn') return;
+
+            if (gameState === 'GAME_OVER') {
+                score = 0; wave = 1; enemiesToSpawn = 5; enemies = []; towers = []; bullets = [];
+                inGameGold = 150; sessionGlobalCoins = 0; lives = 10; gameState = 'PLAYING';
+                return;
+            }
+
+            if (gameState === 'PLAYING') {
+                const touch = e.touches[0];
+                let tx = touch.clientX; let ty = touch.clientY;
+
+                // Защита от кликов по верхней панели
+                if (ty < 60) return;
+
+                if (inGameGold >= 50) {
+                    if (isValidBuildSpot(tx, ty)) {
+                        inGameGold -= 50;
+                        towers.push({
+                            x: tx, y: ty, range: 120, fireRate: 40, cooldown: 0, angle: 0
+                        });
+                        playSFX('shoot', 0.1); // Звук стройки
+                        createExplosion(tx, ty, '#bdc3c7'); // Пыль от стройки
+                    } else {
+                        createFloatText(tx, ty - 20, "НЕЛЬЗЯ!", "#ff3366");
+                    }
+                } else {
+                    createFloatText(tx, ty - 20, "НЕТ ЗОЛОТА!", "#ffcc00");
+                }
+            }
+        }, { passive: false });
+
+        draw(); tg.ready();
+    </script>
+</body>
+</html>
