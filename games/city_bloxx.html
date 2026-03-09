@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>City Bloxx</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background-color: #87CEEB; overflow: hidden; touch-action: none; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; }
+        
+        /* Кнопка "Назад в Хаб" */
+        #backBtn {
+            position: absolute; top: 15px; left: 15px;
+            background: rgba(0, 0, 0, 0.5); color: #fff;
+            border: 2px solid #fff; border-radius: 8px;
+            padding: 8px 12px; font-weight: bold; font-family: inherit;
+            z-index: 100; cursor: pointer; text-decoration: none; display: none;
+        }
+    </style>
+</head>
+<body>
+    <button id="backBtn" onclick="window.location.href='../index.html'"><<< В МЕНЮ</button>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        tg.setHeaderColor('#87CEEB');
+
+        const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Builder", username: "Guest" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+
+        let bankCoins = 0;       
+        let bestScore = 0;       
+        let nickname = user.username || user.first_name || "Строитель";
+
+        // Синхронизация с сервером
+        async function loadUserData() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/get_user`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: user.id, username: nickname })
+                });
+                const data = await res.json();
+                bankCoins = Number(data.coins) || 0;
+            } catch(e) { console.error("Ошибка БД:", e); }
+        }
+        
+        // Для рекордов мы пока сохраняем общие монеты. 
+        // Позже настроим отдельную таблицу рекордов для Башен.
+        async function sendScoreToDatabase(finalScore, collectedCoins) {
+            try {
+                const res = await fetch(`${BACKEND_URL}/save_score`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: user.id, username: nickname, score: 0, coins: collectedCoins }) // Счет пока 0, чтобы не перезаписывать рекорд Космоса
+                });
+                const result = await res.json();
+                bankCoins = Number(result.coins_total); 
+            } catch (e) { console.error(e); }
+        }
+
+        loadUserData();
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // ЗВУКИ (Используем те же, что в космосе, для экономии)
+        let audioCtx; const sfxBuffers = {};
+        async function initWebAudio() {
+            if (audioCtx) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+            const loadBuffer = async (url, key) => {
+                try {
+                    const res = await fetch(url); const buf = await res.arrayBuffer();
+                    sfxBuffers[key] = await audioCtx.decodeAudioData(buf);
+                } catch (e) {}
+            };
+            await Promise.all([
+                loadBuffer('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3', 'drop'), // Звук отцепа
+                loadBuffer('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3', 'hit')    // Звук удара
+            ]);
+        }
+
+        function playSFX(key, volumeLevel) {
+            if (!audioCtx || !sfxBuffers[key]) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const source = audioCtx.createBufferSource(); source.buffer = sfxBuffers[key];
+            const gainNode = audioCtx.createGain(); gainNode.gain.value = volumeLevel; 
+            source.connect(gainNode); gainNode.connect(audioCtx.destination); source.start(0);
+        }
+
+        // --- ПЕРЕМЕННЫЕ ИГРЫ ---
+        let gameState = 'MENU'; // MENU, PLAYING, GAME_OVER
+        let score = 0;
+        let combo = 0;
+        let sessionCoins = 0;
+        let lives = 3;
+
+        const blockW = 100;
+        const blockH = 60;
+        let blocks = []; // Построенная башня
+        let activeBlock = null; // Падающий блок
+
+        let cameraY = 0; // Смещение камеры вверх по мере роста башни
+        let targetCameraY = 0;
+
+        let craneAngle = 0;
+        let craneSpeed = 0.03;
+        let craneSwing = 1.0; // Амплитуда (будет расти с высотой)
+
+        let particles = [];
+        let floatTexts = [];
+
+        function createFloatText(x, y, text, color, size = 20) {
+            floatTexts.push({ x: x, y: y, text: text, color: color, life: 1.0, size: size });
+        }
+
+        function createConfetti(x, y) {
+            playSFX('hit', 0.1);
+            const colors = ['#ffcc00', '#00ffcc', '#ff3366', '#ffffff'];
+            for (let i = 0; i < 20; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10 - 2,
+                    life: 1.0, decay: 0.02 + Math.random() * 0.02,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    size: Math.random() * 6 + 2
+                });
+            }
+        }
+
+        function resetGame() {
+            score = 0; combo = 0; sessionCoins = 0; lives = 3;
+            blocks = [];
+            cameraY = 0; targetCameraY = 0; craneSwing = 0.8; craneSpeed = 0.03;
+            
+            // Базовый фундамент
+            blocks.push({ x: canvas.width / 2, y: canvas.height - blockH / 2, w: blockW + 40, h: blockH, type: 'base' });
+            
+            spawnBlock();
+            gameState = 'PLAYING';
+            document.getElementById('backBtn').style.display = 'none';
+        }
+
+        function spawnBlock() {
+            activeBlock = {
+                x: canvas.width / 2, y: 100, // Начальная позиция на кране
+                w: blockW, h: blockH,
+                isDropping: false, vy: 0
+            };
+        }
+
+        function drawBlock(ctx, x, y, w, h, type) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            if (type === 'base') {
+                ctx.fillStyle = '#555'; ctx.fillRect(-w/2, -h/2, w, h);
+                ctx.fillStyle = '#333'; ctx.fillRect(-w/2, -h/2, w, 10);
+            } else {
+                // Основной цвет блока (красный кирпич)
+                ctx.fillStyle = '#B22222'; ctx.fillRect(-w/2, -h/2, w, h);
+                // Окантовка крыши
+                ctx.fillStyle = '#8B0000'; ctx.fillRect(-w/2, -h/2, w, 8);
+                // Окна
+                ctx.fillStyle = '#ADD8E6'; // Голубые окна
+                ctx.fillRect(-w/2 + 10, -h/2 + 15, 20, 30);
+                ctx.fillRect(-w/2 + 40, -h/2 + 15, 20, 30);
+                ctx.fillRect(w/2 - 30, -h/2 + 15, 20, 30);
+                
+                // Рамы окон
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(-w/2 + 19, -h/2 + 15, 2, 30);
+                ctx.fillRect(-w/2 + 49, -h/2 + 15, 2, 30);
+                ctx.fillRect(w/2 - 21, -h/2 + 15, 2, 30);
+            }
+            ctx.restore();
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            // Плавное движение камеры вверх
+            cameraY += (targetCameraY - cameraY) * 0.1;
+
+            // Обновление частиц
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.vy += 0.2; // гравитация частиц
+                p.life -= p.decay;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            // Обновление текстов
+            for (let i = floatTexts.length - 1; i >= 0; i--) {
+                let ft = floatTexts[i]; ft.y -= 2; ft.life -= 0.02;
+                if (ft.life <= 0) floatTexts.splice(i, 1);
+            }
+
+            // Логика Крана и Блока
+            if (activeBlock) {
+                if (!activeBlock.isDropping) {
+                    // Маятник
+                    craneAngle = Math.sin(Date.now() * craneSpeed) * craneSwing;
+                    activeBlock.x = canvas.width / 2 + Math.sin(craneAngle) * 150;
+                    activeBlock.y = 50 + Math.cos(craneAngle) * 150 + cameraY; 
+                } else {
+                    // Падение
+                    activeBlock.vy += 0.8; // Гравитация
+                    activeBlock.y += activeBlock.vy;
+
+                    let topBlock = blocks[blocks.length - 1];
+
+                    // Проверка столкновения
+                    if (activeBlock.y + activeBlock.h / 2 >= topBlock.y - topBlock.h / 2) {
+                        
+                        let distance = Math.abs(activeBlock.x - topBlock.x);
+                        
+                        if (distance < activeBlock.w / 2 + 10) {
+                            // ПОПАЛ НА БАШНЮ
+                            
+                            // PERFECT механика (погрешность до 12px)
+                            if (distance <= 12) {
+                                activeBlock.x = topBlock.x; // Выравниваем идеально
+                                combo++;
+                                score += 10 + (combo * 5);
+                                createFloatText(activeBlock.x, activeBlock.y - 30, `PERFECT! +${10 + combo*5}`, '#ffcc00', 24);
+                                createConfetti(activeBlock.x, activeBlock.y);
+                            } else {
+                                combo = 0;
+                                score += 10;
+                                playSFX('hit', 0.05);
+                                createFloatText(activeBlock.x, activeBlock.y - 30, "+10", '#ffffff');
+                            }
+
+                            // Закрепляем блок
+                            activeBlock.y = topBlock.y - blockH;
+                            blocks.push(activeBlock);
+                            
+                            // Награда в банк каждые 5 блоков
+                            if (blocks.length % 5 === 0) {
+                                sessionCoins += 10;
+                                createFloatText(activeBlock.x, activeBlock.y - 60, "+10 🪙", '#00ffcc', 20);
+                            }
+
+                            // Усложнение: поднимаем камеру, ускоряем кран
+                            targetCameraY -= blockH;
+                            craneSpeed = Math.min(0.06, craneSpeed + 0.001);
+                            craneSwing = Math.min(1.5, craneSwing + 0.02);
+
+                            spawnBlock();
+
+                        } else {
+                            // ПРОМАХНУЛСЯ
+                            combo = 0;
+                            playSFX('hit', 0.2); // Удар о землю или падение
+                            lives--;
+                            createFloatText(activeBlock.x, activeBlock.y, "MISS!", '#ff3366', 24);
+                            
+                            if (lives <= 0) {
+                                gameState = 'GAME_OVER';
+                                document.getElementById('backBtn').style.display = 'block';
+                                sendScoreToDatabase(score, sessionCoins);
+                            } else {
+                                spawnBlock();
+                            }
+                        }
+                    }
+
+                    // Если улетел вообще мимо экрана
+                    if (activeBlock && activeBlock.y > cameraY + canvas.height + 100) {
+                        combo = 0; lives--;
+                        createFloatText(canvas.width/2, cameraY + canvas.height/2, "УПАЛ!", '#ff3366', 24);
+                        if (lives <= 0) {
+                            gameState = 'GAME_OVER';
+                            document.getElementById('backBtn').style.display = 'block';
+                            sendScoreToDatabase(score, sessionCoins);
+                        } else {
+                            spawnBlock();
+                        }
+                    }
+                }
+            }
+        }
+
+        function draw() {
+            // Фон: небо темнеет с высотой
+            let heightFactor = Math.min(1, blocks.length / 50);
+            let skyR = Math.max(10, 135 - heightFactor * 135);
+            let skyG = Math.max(10, 206 - heightFactor * 206);
+            let skyB = Math.max(30, 235 - heightFactor * 200);
+            ctx.fillStyle = `rgb(${skyR}, ${skyG}, ${skyB})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Отрисовка UI (Статично на экране)
+            if (gameState === 'MENU') {
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Courier New';
+                ctx.fillText('CITY BLOXX', canvas.width / 2, canvas.height / 3);
+                ctx.fillStyle = '#ffffff'; ctx.font = '16px Courier New';
+                ctx.fillText('Тапни, чтобы сбросить блок.', canvas.width / 2, canvas.height / 2 - 20);
+                ctx.fillText('Строй ровно = получай комбо!', canvas.width / 2, canvas.height / 2 + 10);
+                
+                ctx.globalAlpha = Math.abs(Math.sin(Date.now() / 300));
+                ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 24px Courier New';
+                ctx.fillText('>>> ИГРАТЬ <<<', canvas.width / 2, canvas.height / 2 + 80);
+                ctx.globalAlpha = 1.0;
+                
+                document.getElementById('backBtn').style.display = 'block';
+                requestAnimationFrame(draw);
+                return;
+            }
+
+            // --- ОТРИСОВКА ИГРОВОГО МИРА (с учетом камеры) ---
+            ctx.save();
+            ctx.translate(0, -cameraY); // Двигаем мир вниз
+
+            // Кран (Трос)
+            if (activeBlock && !activeBlock.isDropping) {
+                ctx.beginPath();
+                ctx.moveTo(canvas.width / 2, 0 + cameraY); // Точка крепления крана ездит с камерой
+                ctx.lineTo(activeBlock.x, activeBlock.y - activeBlock.h/2);
+                ctx.strokeStyle = '#222'; ctx.lineWidth = 3; ctx.stroke();
+            }
+
+            // Башня
+            blocks.forEach(b => drawBlock(ctx, b.x, b.y, b.w, b.h, b.type));
+
+            // Падающий блок
+            if (activeBlock) {
+                drawBlock(ctx, activeBlock.x, activeBlock.y, activeBlock.w, activeBlock.h, 'normal');
+            }
+
+            // Частицы
+            particles.forEach(p => {
+                ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life);
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Всплывающий текст
+            floatTexts.forEach(ft => {
+                ctx.fillStyle = ft.color; ctx.globalAlpha = Math.max(0, ft.life);
+                ctx.font = `bold ${ft.size}px Courier New`; ctx.textAlign = 'center';
+                ctx.fillText(ft.text, ft.x, ft.y);
+            });
+            ctx.globalAlpha = 1.0;
+
+            ctx.restore();
+            // --- КОНЕЦ МИРА ---
+
+            // --- ОТРИСОВКА UI ПОВЕРХ КАМЕРЫ ---
+            ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px Courier New'; ctx.textAlign = 'left';
+            ctx.fillText(`СЧЕТ: ${score}`, 15, 30);
+            
+            if (combo > 1) {
+                ctx.fillStyle = '#ffaa00';
+                ctx.fillText(`КОМБО x${combo}!`, 15, 60);
+            }
+
+            ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right';
+            ctx.fillText(`🪙 ${bankCoins + sessionCoins}`, canvas.width - 15, 60);
+            ctx.fillText('❤️'.repeat(Math.max(0, lives)), canvas.width - 15, 30);
+
+            if (gameState === 'GAME_OVER') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height); 
+                ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Courier New'; 
+                ctx.fillText('УПАЛО!', canvas.width / 2, canvas.height / 2 - 40); 
+                
+                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Courier New'; 
+                ctx.fillText(`Высота: ${blocks.length - 1} этажей`, canvas.width / 2, canvas.height / 2 + 20); 
+                ctx.fillText(`Счет: ${score}`, canvas.width / 2, canvas.height / 2 + 60); 
+                
+                ctx.fillStyle = '#ffcc00'; 
+                ctx.fillText(`Заработано: +${sessionCoins} 🪙`, canvas.width / 2, canvas.height / 2 + 100); 
+                
+                ctx.font = '18px Courier New'; ctx.fillStyle = '#00ffcc'; 
+                ctx.fillText('Тапни, чтобы построить заново', canvas.width / 2, canvas.height / 2 + 160);
+            }
+
+            update();
+            requestAnimationFrame(draw);
+        }
+
+        // ОБРАБОТКА ТАПОВ
+        window.addEventListener('touchstart', (e) => {
+            initWebAudio();
+            
+            // Игнорируем клик по кнопке "Назад"
+            if (e.target.id === 'backBtn') return;
+
+            if (gameState === 'MENU') {
+                resetGame();
+                return;
+            }
+            if (gameState === 'GAME_OVER') {
+                resetGame();
+                return;
+            }
+
+            if (gameState === 'PLAYING' && activeBlock && !activeBlock.isDropping) {
+                activeBlock.isDropping = true;
+                playSFX('drop', 0.1);
+            }
+        }, { passive: false });
+
+        draw();
+        tg.ready();
+    </script>
+</body>
+</html>
