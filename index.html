@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SverepoV Game Hub</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-main: #0a0a12;
+            --bg-card: #151522;
+            --accent: #00ffcc;
+            --text-main: #ffffff;
+            --text-muted: #888899;
+            --gold: #ffcc00;
+            --danger: #ff3366;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        
+        body { 
+            background-color: var(--bg-main); 
+            color: var(--text-main); 
+            overflow-x: hidden; 
+            -webkit-tap-highlight-color: transparent;
+            padding-bottom: 80px; /* Отступ для нижнего меню */
+        }
+
+        /* ШАПКА: Профиль и Баланс */
+        .header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 20px; background: linear-gradient(180deg, rgba(21,21,34,1) 0%, rgba(10,10,18,0) 100%);
+        }
+        .user-info { display: flex; align-items: center; gap: 12px; }
+        .avatar { width: 45px; height: 45px; background: var(--accent); border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; color: #000; font-size: 20px; text-transform: uppercase; }
+        .nickname { font-size: 16px; font-weight: bold; }
+        .global-balance { background: rgba(255, 204, 0, 0.1); border: 1px solid var(--gold); padding: 8px 15px; border-radius: 20px; font-weight: 800; color: var(--gold); font-size: 16px; display: flex; align-items: center; gap: 5px; }
+
+        /* КОНТЕНТ: Сетка Игр */
+        .section-title { padding: 20px 20px 10px; font-size: 22px; font-weight: 800; letter-spacing: 0.5px; }
+        
+        .games-grid { display: flex; flex-direction: column; gap: 15px; padding: 0 20px; }
+        
+        .game-card {
+            background: var(--bg-card); border-radius: 16px; padding: 15px;
+            display: flex; align-items: center; gap: 15px;
+            border: 1px solid rgba(255,255,255,0.05); position: relative; overflow: hidden;
+            transition: transform 0.1s;
+        }
+        .game-card:active { transform: scale(0.98); }
+        
+        .game-icon { width: 70px; height: 70px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 32px; flex-shrink: 0; }
+        .game-info { flex-grow: 1; }
+        .game-title { font-size: 18px; font-weight: bold; margin-bottom: 4px; }
+        .game-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+        
+        .play-btn { background: var(--accent); color: #000; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; text-transform: uppercase; font-size: 12px; cursor: pointer; }
+        .dev-badge { background: #333; color: var(--text-muted); font-size: 10px; padding: 4px 8px; border-radius: 6px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* Иконки игр (заглушки) */
+        .icon-space { background: linear-gradient(45deg, #0f2027, #203a43, #2c5364); }
+        .icon-city { background: linear-gradient(45deg, #3a1c71, #d76d77, #ffaf7b); }
+        .icon-race { background: linear-gradient(45deg, #cb2d3e, #ef473a); }
+        .icon-quiz { background: linear-gradient(45deg, #11998e, #38ef7d); }
+
+        /* НИЖНЕЕ НАВИГАЦИОННОЕ МЕНЮ */
+        .bottom-nav {
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            background: rgba(21, 21, 34, 0.95); backdrop-filter: blur(10px);
+            display: flex; justify-content: space-around; padding: 15px 10px 25px;
+            border-top: 1px solid rgba(255,255,255,0.05); z-index: 1000;
+        }
+        .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-muted); text-decoration: none; font-size: 11px; font-weight: bold; cursor: pointer; }
+        .nav-item.active { color: var(--accent); }
+        .nav-icon { font-size: 24px; }
+
+    </style>
+</head>
+<body>
+
+    <header class="header">
+        <div class="user-info">
+            <div class="avatar" id="userAvatar">A</div>
+            <div class="nickname" id="userName">Загрузка...</div>
+        </div>
+        <div class="global-balance">
+            <span id="bankBalance">0</span> 🪙
+        </div>
+    </header>
+
+    <div class="section-title">Игры</div>
+    <div class="games-grid">
+        
+        <div class="game-card" onclick="window.location.href='fly_invaders.html'">
+            <div class="game-icon icon-space">🚀</div>
+            <div class="game-info">
+                <div class="game-title">Fly Invaders</div>
+                <div class="game-desc">Космический шутер. Защити галактику и фарми монеты!</div>
+            </div>
+            <button class="play-btn">ИГРАТЬ</button>
+        </div>
+
+        <div class="game-card" style="opacity: 0.6;">
+            <div class="game-icon icon-city">🏗️</div>
+            <div class="game-info">
+                <div class="game-title">City Bloxx</div>
+                <div class="game-desc">Построй самый высокий небоскреб из блоков.</div>
+            </div>
+            <div class="dev-badge">СКОРО</div>
+        </div>
+
+        <div class="game-card" style="opacity: 0.6;">
+            <div class="game-icon icon-race">🏎️</div>
+            <div class="game-info">
+                <div class="game-title">Neon Racing</div>
+                <div class="game-desc">Уворачивайся от трафика на бешеных скоростях.</div>
+            </div>
+            <div class="dev-badge">СКОРО</div>
+        </div>
+
+        <div class="game-card" style="opacity: 0.6;">
+            <div class="game-icon icon-quiz">🧠</div>
+            <div class="game-info">
+                <div class="game-title">Что? Где? Когда?</div>
+                <div class="game-desc">Интеллектуальная викторина для элиты.</div>
+            </div>
+            <div class="dev-badge">СКОРО</div>
+        </div>
+
+    </div>
+
+    <nav class="bottom-nav">
+        <div class="nav-item active">
+            <span class="nav-icon">🎮</span>
+            <span>Игры</span>
+        </div>
+        <div class="nav-item" onclick="alert('Глобальный магазин скоро появится. Здесь можно будет покупать монеты за Telegram Stars!')">
+            <span class="nav-icon">🛒</span>
+            <span>Банк</span>
+        </div>
+        <div class="nav-item" onclick="alert('Настройки профиля и выбор аватара в разработке.')">
+            <span class="nav-icon">⚙️</span>
+            <span>Профиль</span>
+        </div>
+    </nav>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        // Отключаем вертикальный свайп, чтобы хаб не закрывался случайно
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        // Красим хедер телеграма в цвет нашего хаба
+        tg.setHeaderColor('#0a0a12');
+
+        const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Test", username: "Guest" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+        
+        let nickname = user.username || user.first_name || "Пилот";
+
+        // Устанавливаем Аватар (первая буква имени)
+        document.getElementById('userAvatar').textContent = nickname.charAt(0).toUpperCase();
+
+        // Синхронизация глобального баланса
+        async function fetchGlobalData() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/get_user`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: user.id, username: nickname })
+                });
+                const data = await res.json();
+                
+                // Обновляем UI
+                document.getElementById('userName').textContent = data.nickname || nickname;
+                document.getElementById('bankBalance').textContent = Number(data.coins) || 0;
+            } catch(e) { 
+                console.error("Ошибка связи с сервером:", e); 
+                document.getElementById('userName').textContent = nickname;
+                document.getElementById('bankBalance').textContent = "???";
+            }
+        }
+
+        // Запускаем подгрузку данных при открытии хаба
+        fetchGlobalData();
+    </script>
+</body>
+</html>
