@@ -36,12 +36,16 @@
         let inventory = JSON.parse(localStorage.getItem('fly_inv_inv')) || {
             skins: ['default'], currentSkin: 'default',
             themes: ['default'], currentTheme: 'default',
+            weapons: ['default'], currentWeapon: 'default', // Для Шаурмы
             permWeapon: 1, permHelper: false
         };
+        // Миграция старых сохранений
+        if(!inventory.weapons) { inventory.weapons = ['default']; inventory.currentWeapon = 'default'; }
 
         function saveInv() { localStorage.setItem('fly_inv_inv', JSON.stringify(inventory)); }
 
         let gameState = 'LOADING'; 
+        let topPlayers = []; // Данные лидерборда
 
         async function loadUserData() {
             try {
@@ -58,6 +62,13 @@
             } catch(e) { console.error(e); checkDailyBonus(); }
         }
         
+        async function fetchTopPlayers() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/top_players`);
+                topPlayers = await res.json();
+            } catch (e) { console.error("Ошибка загрузки ТОП-10:", e); topPlayers = []; }
+        }
+
         async function sendScoreToDatabase(finalScore, collectedCoins) {
             try {
                 const res = await fetch(`${BACKEND_URL}/save_score`, {
@@ -71,7 +82,6 @@
             } catch (e) { console.error(e); }
         }
 
-        // ЕЖЕДНЕВНЫЙ БОНУС
         function checkDailyBonus() {
             let today = new Date().toDateString();
             let lastLogin = localStorage.getItem('fly_inv_last_login');
@@ -139,19 +149,26 @@
 
         const btnMusic = { x: 15, y: 85, w: 35, h: 35 }; const btnSfx = { x: 60, y: 85, w: 35, h: 35 };
 
-        // МАГАЗИН (Уплотнили и добавили темы)
+        // МАГАЗИН: Скины, Апгрейды, Темы и Шаурма
         const shopItems = [
-            { id: 'skin_neon', type: 'skin', name: 'Скин: НЕОН', desc: 'Кибер-свечение', price: 500, y: 100 },
-            { id: 'perm_w2', type: 'upgrade', name: 'Оружейник', desc: 'Пушка 2 ур.', price: 1500, y: 175 },
-            { id: 'perm_help', type: 'upgrade', name: 'Напарник', desc: 'Дрон со старта', price: 3000, y: 250 },
-            { id: 'theme_retro', type: 'theme', name: 'Тема: РЕТРО', desc: 'Пиксель-UI', price: 1000, y: 325 },
-            { id: 'theme_pro', type: 'premium', name: 'Эксклюзив: PRO', desc: 'Особый интерфейс', price: '1.99$', y: 400 }
+            { id: 'skin_neon', type: 'skin', name: 'Скин: НЕОН', desc: 'Кибер-свечение', price: 500, y: 80 },
+            { id: 'skin_tank', type: 'skin', name: 'Скин: ТАНК', desc: 'Броня', price: 1500, y: 150 },
+            { id: 'skin_ghost', type: 'skin', name: 'Скин: ПРИЗРАК', desc: 'Стелс', price: 2000, y: 220 },
+            { id: 'wpn_shaurma', type: 'weapon', name: 'Пушка: ШАУРМА', desc: 'Стріляє м\'ясом!', price: 5000, y: 290 },
+            { id: 'perm_w2', type: 'upgrade', name: 'Оружейник', desc: 'Пушка 2 ур.', price: 1500, y: 360 },
+            { id: 'perm_help', type: 'upgrade', name: 'Напарник', desc: 'Дрон со старта', price: 3000, y: 430 },
+            { id: 'theme_retro', type: 'theme', name: 'Тема: РЕТРО', desc: 'Пиксель-UI', price: 1000, y: 500 }
         ];
+
+        // ОФФСЕТ ПРОКРУТКИ МАГАЗИНА (чтобы влазили все товары)
+        let shopScrollY = 0;
+        let isDraggingShop = false;
+        let lastTouchY = 0;
 
         let score = 0; let sessionCoins = 0; let lives = 3; let level = 1; let nextJumpScore = 1000; 
         
         let weaponLevel = 1; let hasHelper = false; let helperAngle = 0;
-        let shieldTimer = 0; // ТАЙМЕР ЩИТА
+        let shieldTimer = 0; let magnetTimer = 0; // ТАЙМЕРЫ БУСТЕРОВ
         
         let hitEffectTimer = 0; let transitionTimer = 0; let menuPulseTimer = 0; let coinAnimTimer = 0;
         let shopMsg = ""; let shopMsgTimer = 0;
@@ -160,6 +177,8 @@
 
         let bullets = []; let enemyBullets = []; let enemies = [];
         let stars = []; let particles = []; let powerups = []; let collectibles = [];
+        let floatTexts = []; // Всплывающие тексты (+1)
+
         let boss = null; let bossDefeated = false;
 
         for (let i = 0; i < 120; i++) {
@@ -177,17 +196,22 @@
             particles.push({ x: x + (Math.random() - 0.5) * 12, y: y, vx: (Math.random() - 0.5) * (isHyper ? 4 : 2), vy: Math.random() * (isHyper ? 15 : 6) + 3, life: 1.0, decay: isHyper ? 0.03 : 0.06, color: isHyper ? '#ffffff' : '#00ccff', size: Math.random() * (isHyper ? 6 : 4) + 1 });
         }
 
+        function createFloatText(x, y, text, color) {
+            floatTexts.push({ x: x, y: y, text: text, color: color, life: 1.0 });
+        }
+
         function spawnBoss() {
             boss = { x: canvas.width / 2 - 60, y: -150, width: 120, height: 120, hp: 100 + (level * 20), maxHp: 100 + (level * 20), speedX: 2, speedY: 1, state: 'entering', shootTimer: 0 };
         }
 
         function resetGame() {
             score = 0; sessionCoins = 0; lives = 3; level = 1; 
-            nextJumpScore = 1000; // ЖЕСТКАЯ ПРИВЯЗКА К 1000 ОЧКАМ ЗА УРОВЕНЬ
-            weaponLevel = inventory.permWeapon; hasHelper = inventory.permHelper; shieldTimer = 0;
+            nextJumpScore = 1000; 
+            weaponLevel = inventory.permWeapon; hasHelper = inventory.permHelper; 
+            shieldTimer = 0; magnetTimer = 0;
             
             boss = null; bossDefeated = false; gameState = 'PLAYING';
-            bullets = []; enemyBullets = []; enemies = []; particles = []; powerups = []; collectibles = [];
+            bullets = []; enemyBullets = []; enemies = []; particles = []; powerups = []; collectibles = []; floatTexts = [];
             player.x = canvas.width / 2 - player.width / 2; player.y = canvas.height - 120;
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
             if (!isMusicMuted) bgMusic.play().catch(() => {});
@@ -195,20 +219,17 @@
 
         function spawnLoot(x, y, forceCoins = 0) {
             if (forceCoins > 0) {
-                // Спавн нескольких монет (для астероидов)
-                for(let i=0; i<forceCoins; i++) {
-                    collectibles.push({ x: x + (Math.random()-0.5)*20, y: y + (Math.random()-0.5)*20, size: 15, type: 'coin', speed: 3 });
-                }
+                for(let i=0; i<forceCoins; i++) collectibles.push({ x: x + (Math.random()-0.5)*20, y: y + (Math.random()-0.5)*20, size: 15, type: 'coin', speed: 3 });
                 return;
             }
             let rand = Math.random();
             if (rand < 0.3) collectibles.push({ x: x, y: y, size: 15, type: 'coin', speed: 3 });
-            else if (rand < 0.4) {
-                // Разные типы бустеров: Оружие (W), Дрон (H), ЩИТ (S)
+            else if (rand < 0.45) { // Чуть увеличил шанс бустера
                 let pType = 'weapon';
                 let pRand = Math.random();
-                if (pRand > 0.7) pType = 'shield';
-                else if (pRand > 0.4) pType = 'helper';
+                if (pRand > 0.8) pType = 'magnet'; // 20% шанс на магнит
+                else if (pRand > 0.6) pType = 'shield';
+                else if (pRand > 0.3) pType = 'helper';
                 powerups.push({ x: x, y: y, size: 20, type: pType, speed: 2 });
             }
         }
@@ -216,6 +237,14 @@
         function update() {
             menuPulseTimer += 0.05; helperAngle += 0.1; coinAnimTimer += 0.15;
             if (shieldTimer > 0) shieldTimer--;
+            if (magnetTimer > 0) magnetTimer--;
+
+            // Обновление всплывающих текстов
+            for (let i = floatTexts.length - 1; i >= 0; i--) {
+                let ft = floatTexts[i];
+                ft.y -= 1.5; ft.life -= 0.02;
+                if (ft.life <= 0) floatTexts.splice(i, 1);
+            }
 
             if (gameState === 'LEVEL_TRANSITION') {
                 transitionTimer++;
@@ -225,9 +254,7 @@
                 else if (transitionTimer === 90) { player.y = canvas.height + 100; } 
                 else if (transitionTimer > 90 && transitionTimer < 130) { player.y -= 5; createEngineTrail(player.x + player.width / 2, player.y + player.height, false); } 
                 else if (transitionTimer >= 130) { 
-                    level++; 
-                    nextJumpScore = score + 1000; // ИСПРАВЛЕНА ЛОГИКА СКИПОВ. Ровно +1000 к текущему.
-                    gameState = 'PLAYING'; player.y = canvas.height - 120; 
+                    level++; nextJumpScore = score + 1000; gameState = 'PLAYING'; player.y = canvas.height - 120; 
                 }
                 for (let i = particles.length - 1; i >= 0; i--) { let p = particles[i]; p.x += p.vx; p.y += p.vy; p.life -= p.decay; if (p.life <= 0) particles.splice(i, 1); }
                 return; 
@@ -264,7 +291,6 @@
                 if (Math.random() < spawnRate) {
                     let rand = Math.random();
                     if (rand < 0.1) {
-                        // АСТЕРОИД
                         enemies.push({ x: Math.random() * (canvas.width - 70), y: -70, width: 70, height: 70, speed: 1 + level*0.2, type: 'asteroid', hp: 10 + level*2, wiggleOffset: 0 });
                     } else {
                         let isShooter = level >= 2 && rand < 0.5;
@@ -274,11 +300,15 @@
             }
 
             for (let i = bullets.length - 1; i >= 0; i--) {
-                bullets[i].y -= bullets[i].speed; 
+                let b = bullets[i];
+                if (b.type === 'shaurma') b.angle += 0.2; // Крутим шаурму
+                
+                b.y -= b.speed; 
+                
                 if (boss && boss.state === 'fighting') {
-                    let b = bullets[i];
                     if (b.x < boss.x + boss.width && b.x + b.width > boss.x && b.y < boss.y + boss.height && b.y + b.height > boss.y) {
-                        boss.hp -= weaponLevel; createExplosion(b.x, b.y, '#ffaa00', 0.5); bullets.splice(i, 1);
+                        boss.hp -= (b.type === 'shaurma' ? 10 : weaponLevel); // Шаурма бьет сильно
+                        createExplosion(b.x, b.y, '#ffaa00', 0.5); bullets.splice(i, 1);
                         if (boss.hp <= 0) { 
                             createExplosion(boss.x + boss.width/2, boss.y + boss.height/2, '#ff0000', 3); score += 2000;
                             for(let c=0; c<15; c++) spawnLoot(boss.x + Math.random()*boss.width, boss.y + Math.random()*boss.height); 
@@ -287,7 +317,7 @@
                         continue;
                     }
                 }
-                if (bullets[i] && bullets[i].y < 0) bullets.splice(i, 1);
+                if (b && b.y < 0) bullets.splice(i, 1);
             }
 
             for (let i = enemyBullets.length - 1; i >= 0; i--) {
@@ -295,9 +325,8 @@
                 if (enemyBullets[i].x < player.x + player.width && enemyBullets[i].x + enemyBullets[i].width > player.x &&
                     enemyBullets[i].y < player.y + player.height && enemyBullets[i].y + enemyBullets[i].height > player.y) {
                     enemyBullets.splice(i, 1);
-                    if (shieldTimer > 0) {
-                        playSFX('boom', 0.1); // Щит отбивает
-                    } else {
+                    if (shieldTimer > 0) { playSFX('boom', 0.1); } 
+                    else {
                         lives--; hitEffectTimer = 15; createExplosion(player.x + player.width/2, player.y + player.height/2, '#ff0000');
                         if (lives <= 0) { gameState = 'GAME_OVER'; bgMusic.pause(); sendScoreToDatabase(score, sessionCoins); }
                     }
@@ -307,9 +336,22 @@
             }
 
             for (let i = collectibles.length - 1; i >= 0; i--) {
-                let c = collectibles[i]; c.y += c.speed;
+                let c = collectibles[i]; 
+                
+                // ЛОГИКА МАГНИТА
+                if (magnetTimer > 0) {
+                    let dx = (player.x + player.width/2) - (c.x + c.size/2);
+                    let dy = (player.y + player.height/2) - (c.y + c.size/2);
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist > 5) { c.x += (dx/dist) * 8; c.y += (dy/dist) * 8; }
+                } else {
+                    c.y += c.speed;
+                }
+                
                 if (c.x < player.x + player.width && c.x + c.size > player.x && c.y < player.y + player.height && c.y + c.size > player.y) {
-                    sessionCoins++; playSFX('shoot', 0.2); collectibles.splice(i, 1); continue;
+                    sessionCoins++; playSFX('shoot', 0.2); 
+                    createFloatText(c.x, c.y, "+1 🪙", "#00ff00"); // ВСПЛЫВАЮЩИЙ ТЕКСТ
+                    collectibles.splice(i, 1); continue;
                 }
                 if (c.y > canvas.height) collectibles.splice(i, 1);
             }
@@ -319,7 +361,8 @@
                 if (p.x < player.x + player.width && p.x + p.size > player.x && p.y < player.y + player.height && p.y + p.size > player.y) {
                     if (p.type === 'weapon' && weaponLevel < 5) weaponLevel++; 
                     if (p.type === 'helper') hasHelper = true;
-                    if (p.type === 'shield') shieldTimer = 300; // 5 секунд при 60fps
+                    if (p.type === 'shield') shieldTimer = 300; 
+                    if (p.type === 'magnet') magnetTimer = 300; // 5 сек магнита
                     playSFX('shoot', 0.15); powerups.splice(i, 1); score += 50; continue;
                 }
                 if (p.y > canvas.height) powerups.splice(i, 1);
@@ -344,9 +387,8 @@
                 let hitPadding = 12;
                 if (e.x + hitPadding < player.x + player.width - hitPadding && e.x + e.width - hitPadding > player.x + hitPadding &&
                     e.y + hitPadding < player.y + player.height - hitPadding && e.y + e.height - hitPadding > player.y + hitPadding) {
-                    if (shieldTimer > 0) {
-                        e.hp -= 10; playSFX('boom', 0.1);
-                    } else {
+                    if (shieldTimer > 0) { e.hp -= 10; playSFX('boom', 0.1); } 
+                    else {
                         lives--; hitEffectTimer = 15; createExplosion(player.x + player.width/2, player.y + player.height/2, '#00ffcc'); e.hp = 0;
                         if (lives <= 0) { gameState = 'GAME_OVER'; bgMusic.pause(); sendScoreToDatabase(score, sessionCoins); }
                     }
@@ -356,26 +398,32 @@
                 for (let j = bullets.length - 1; j >= 0; j--) {
                     let b = bullets[j];
                     if (b.x < e.x + e.width && b.x + b.width > e.x && b.y < e.y + e.height && b.y + b.height > e.y) {
-                        e.hp -= weaponLevel; createExplosion(b.x, b.y, '#ffcc00', 0.5); bullets.splice(j, 1);
-                        enemyHit = true; break; 
+                        e.hp -= (b.type === 'shaurma' ? 10 : weaponLevel); // Шаурма шотает
+                        createExplosion(b.x, b.y, '#ffcc00', 0.5); bullets.splice(j, 1); enemyHit = true; break; 
                     }
                 }
                 
                 if (e.hp <= 0) {
                     score += (e.type === 'asteroid' ? 50 : 10); 
                     createExplosion(e.x + e.width/2, e.y + e.height/2, '#ffcc00'); 
-                    if (e.type === 'asteroid') spawnLoot(e.x + e.width/2, e.y + e.height/2, 3); // 3 монеты с астероида
+                    if (e.type === 'asteroid') spawnLoot(e.x + e.width/2, e.y + e.height/2, 3); 
                     else spawnLoot(e.x + e.width/2, e.y + e.height/2); 
                     enemies.splice(i, 1);
                 }
             }
 
             if (isTouching && Date.now() - lastShootTime > shootDelay) {
-                if (weaponLevel === 1) { bullets.push({ x: player.x + player.width / 2 - 3, y: player.y, width: 6, height: 20, speed: 12, color: '#ffff00' }); } 
-                else if (weaponLevel === 2) { bullets.push({ x: player.x + 10, y: player.y + 10, width: 5, height: 20, speed: 14, color: '#ffff00' }); bullets.push({ x: player.x + player.width - 15, y: player.y + 10, width: 5, height: 20, speed: 14, color: '#ffff00' }); } 
-                else if (weaponLevel === 3) { bullets.push({ x: player.x + player.width / 2 - 4, y: player.y - 10, width: 8, height: 25, speed: 16, color: '#00ff00' }); bullets.push({ x: player.x, y: player.y + 10, width: 4, height: 20, speed: 14, color: '#00ff00' }); bullets.push({ x: player.x + player.width - 4, y: player.y + 10, width: 4, height: 20, speed: 14, color: '#00ff00' }); } 
-                else if (weaponLevel === 4) { bullets.push({ x: player.x - 10, y: player.y + 20, width: 4, height: 20, speed: 14, color: '#00ffff' }); bullets.push({ x: player.x + 10, y: player.y, width: 6, height: 25, speed: 16, color: '#00ffff' }); bullets.push({ x: player.x + player.width - 16, y: player.y, width: 6, height: 25, speed: 16, color: '#00ffff' }); bullets.push({ x: player.x + player.width + 6, y: player.y + 20, width: 4, height: 20, speed: 14, color: '#00ffff' }); } 
-                else if (weaponLevel >= 5) { bullets.push({ x: player.x + player.width / 2 - 10, y: player.y - 20, width: 20, height: 40, speed: 20, color: '#ff00ff' }); }
+                // ЛОГИКА ОРУЖИЯ ШАУРМЫ
+                if (inventory.currentWeapon === 'shaurma') {
+                    bullets.push({ x: player.x + player.width / 2 - 15, y: player.y, width: 30, height: 30, speed: 10, type: 'shaurma', angle: 0 });
+                } else {
+                    // ОБЫЧНОЕ ОРУЖИЕ
+                    if (weaponLevel === 1) { bullets.push({ x: player.x + player.width / 2 - 3, y: player.y, width: 6, height: 20, speed: 12, color: '#ffff00' }); } 
+                    else if (weaponLevel === 2) { bullets.push({ x: player.x + 10, y: player.y + 10, width: 5, height: 20, speed: 14, color: '#ffff00' }); bullets.push({ x: player.x + player.width - 15, y: player.y + 10, width: 5, height: 20, speed: 14, color: '#ffff00' }); } 
+                    else if (weaponLevel === 3) { bullets.push({ x: player.x + player.width / 2 - 4, y: player.y - 10, width: 8, height: 25, speed: 16, color: '#00ff00' }); bullets.push({ x: player.x, y: player.y + 10, width: 4, height: 20, speed: 14, color: '#00ff00' }); bullets.push({ x: player.x + player.width - 4, y: player.y + 10, width: 4, height: 20, speed: 14, color: '#00ff00' }); } 
+                    else if (weaponLevel === 4) { bullets.push({ x: player.x - 10, y: player.y + 20, width: 4, height: 20, speed: 14, color: '#00ffff' }); bullets.push({ x: player.x + 10, y: player.y, width: 6, height: 25, speed: 16, color: '#00ffff' }); bullets.push({ x: player.x + player.width - 16, y: player.y, width: 6, height: 25, speed: 16, color: '#00ffff' }); bullets.push({ x: player.x + player.width + 6, y: player.y + 20, width: 4, height: 20, speed: 14, color: '#00ffff' }); } 
+                    else if (weaponLevel >= 5) { bullets.push({ x: player.x + player.width / 2 - 10, y: player.y - 20, width: 20, height: 40, speed: 20, color: '#ff00ff' }); }
+                }
 
                 if (hasHelper) { let hx = player.x + player.width/2 + Math.cos(helperAngle) * 60; let hy = player.y + player.height/2 + Math.sin(helperAngle) * 60; bullets.push({ x: hx, y: hy, width: 4, height: 15, speed: 10, color: '#ffcc00' }); }
                 
@@ -394,13 +442,13 @@
 
         function draw() {
             let bgR = 20, bgG = 5, bgB = 15;
-            if (inventory.currentTheme === 'retro') { bgR = 0; bgG = 0; bgB = 0; } // Черный для ретро
+            if (inventory.currentTheme === 'retro') { bgR = 0; bgG = 0; bgB = 0; } 
             else if (boss) { bgR = 100; bgG = 0; bgB = 0; }
             else if (level > 10) { bgR = 40; bgG = 10; bgB = 60; } 
             else if (level > 5) { bgR = 5; bgG = 40; bgB = 50; }  
             else { bgR = Math.min(20 + level * 8, 80); bgG = 5; bgB = Math.max(15 - level * 2, 0); }
 
-            ctx.fillStyle = `rgba(${bgR}, ${bgG}, ${bgB}, 0.8)`; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = `rgba(${bgR}, ${bgG}, ${bgB}, 1.0)`; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             let fontStyle = inventory.currentTheme === 'retro' ? 'Press Start 2P, Courier New' : 'Courier New';
 
@@ -413,68 +461,86 @@
             }
             else if (gameState === 'DAILY_BONUS') {
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.9)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = `bold 32px ${fontStyle}`;
-                ctx.fillText('ПОДАРОК!', canvas.width / 2, canvas.height / 2 - 60);
-                
-                ctx.fillStyle = '#fff'; ctx.font = `20px ${fontStyle}`;
-                ctx.fillText('За ежедневный вход:', canvas.width / 2, canvas.height / 2 - 10);
-                
-                ctx.fillStyle = '#00ffcc'; ctx.font = `bold 36px ${fontStyle}`;
-                ctx.fillText('+500 🪙', canvas.width / 2, canvas.height / 2 + 40);
-
-                ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer));
-                ctx.fillStyle = '#ff3366'; ctx.font = `20px ${fontStyle}`;
-                ctx.fillText('[ ЗАБРАТЬ ]', canvas.width / 2, canvas.height / 2 + 120);
-                ctx.globalAlpha = 1.0;
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = `bold 32px ${fontStyle}`; ctx.fillText('ПОДАРОК!', canvas.width / 2, canvas.height / 2 - 60);
+                ctx.fillStyle = '#fff'; ctx.font = `20px ${fontStyle}`; ctx.fillText('За ежедневный вход:', canvas.width / 2, canvas.height / 2 - 10);
+                ctx.fillStyle = '#00ffcc'; ctx.font = `bold 36px ${fontStyle}`; ctx.fillText('+500 🪙', canvas.width / 2, canvas.height / 2 + 40);
+                ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer)); ctx.fillStyle = '#ff3366'; ctx.font = `20px ${fontStyle}`; ctx.fillText('[ ЗАБРАТЬ ]', canvas.width / 2, canvas.height / 2 + 120); ctx.globalAlpha = 1.0;
             }
             else if (gameState === 'MENU' || gameState === 'PROFILE') {
                 ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = `bold 42px ${fontStyle}`; ctx.fillText('FLY INVADERS', canvas.width / 2, canvas.height / 3 - 20);
-                ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer)); ctx.fillStyle = '#00ffcc'; ctx.font = `bold 24px ${fontStyle}`; ctx.fillText('>>> ИГРАТЬ <<<', canvas.width / 2, canvas.height / 2);
-                ctx.globalAlpha = 1.0;
+                ctx.globalAlpha = Math.abs(Math.sin(menuPulseTimer)); ctx.fillStyle = '#00ffcc'; ctx.font = `bold 24px ${fontStyle}`; ctx.fillText('>>> ИГРАТЬ <<<', canvas.width / 2, canvas.height / 2 - 20); ctx.globalAlpha = 1.0;
                 
-                ctx.fillStyle = '#ff3366'; ctx.font = `bold 24px ${fontStyle}`; ctx.fillText('[ МАГАЗИН ]', canvas.width / 2, canvas.height / 2 + 80);
-                ctx.fillStyle = '#666666'; ctx.font = `16px ${fontStyle}`; ctx.fillText(`[ РЕКОРД: ${bestScore} ]`, canvas.width / 2, canvas.height / 2 + 130);
+                ctx.fillStyle = '#ff3366'; ctx.font = `bold 24px ${fontStyle}`; ctx.fillText('[ МАГАЗИН ]', canvas.width / 2, canvas.height / 2 + 40);
                 
-                // Профиль блок
-                ctx.fillStyle = '#00ffcc'; ctx.font = `18px ${fontStyle}`; ctx.fillText(`Пилот: ${nickname}`, canvas.width / 2, canvas.height / 2 + 170);
-                ctx.fillStyle = '#ffaa00'; ctx.font = `14px ${fontStyle}`; ctx.fillText(`[ ✏️ ИЗМЕНИТЬ ]`, canvas.width / 2, canvas.height / 2 + 195);
+                // КНОПКА ТАБЛИЦЫ ЛИДЕРОВ
+                ctx.fillStyle = '#00ffff'; ctx.font = `bold 20px ${fontStyle}`; ctx.fillText('[ ЛИДЕРБОРД 🏆 ]', canvas.width / 2, canvas.height / 2 + 90);
+
+                ctx.fillStyle = '#666666'; ctx.font = `16px ${fontStyle}`; ctx.fillText(`[ РЕКОРД: ${bestScore} ]`, canvas.width / 2, canvas.height / 2 + 140);
+                ctx.fillStyle = '#00ffcc'; ctx.font = `18px ${fontStyle}`; ctx.fillText(`Пилот: ${nickname}`, canvas.width / 2, canvas.height / 2 + 180);
+                ctx.fillStyle = '#ffaa00'; ctx.font = `14px ${fontStyle}`; ctx.fillText(`[ ✏️ ИЗМЕНИТЬ ]`, canvas.width / 2, canvas.height / 2 + 205);
                 
                 drawUIButtons();
             } 
+            else if (gameState === 'LEADERBOARD') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.9)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = `bold 32px ${fontStyle}`; ctx.fillText('ТОП-10', canvas.width / 2, 60);
+                
+                if (topPlayers.length === 0) {
+                    ctx.fillStyle = '#fff'; ctx.font = `18px ${fontStyle}`; ctx.fillText('Загрузка данных...', canvas.width / 2, canvas.height / 2);
+                } else {
+                    let startY = 120;
+                    topPlayers.forEach((p, index) => {
+                        ctx.fillStyle = index === 0 ? '#ffaa00' : (index === 1 ? '#cccccc' : (index === 2 ? '#cd7f32' : '#ffffff'));
+                        ctx.textAlign = 'left'; ctx.font = `bold 16px ${fontStyle}`;
+                        ctx.fillText(`${index + 1}. ${p.nickname.substring(0, 12)}`, 30, startY);
+                        ctx.textAlign = 'right'; ctx.fillText(`${p.score}`, canvas.width - 30, startY);
+                        startY += 40;
+                    });
+                }
+                
+                ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = `bold 24px ${fontStyle}`; ctx.fillText('<<< НАЗАД', canvas.width / 2, canvas.height - 40);
+            }
             else if (gameState === 'SHOP') {
+                ctx.save();
+                // Логика прокрутки: сдвигаем весь контент магазина по Y
+                ctx.translate(0, shopScrollY);
+
                 ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = `bold 32px ${fontStyle}`; ctx.fillText('МАГАЗИН', canvas.width / 2, 50);
                 ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right'; ctx.font = `bold 18px ${fontStyle}`; ctx.fillText(`Банк: ${bankCoins} 🪙`, canvas.width - 20, 30); 
 
                 shopItems.forEach(item => {
-                    ctx.fillStyle = '#222'; ctx.fillRect(20, item.y, canvas.width - 40, 65); // Меньше высота
-                    ctx.fillStyle = item.type === 'theme' || item.type === 'premium' ? '#ff33ff' : '#00ffcc'; 
-                    ctx.textAlign = 'left'; ctx.font = `16px ${fontStyle}`;
+                    ctx.fillStyle = '#222'; ctx.fillRect(20, item.y, canvas.width - 40, 60); 
+                    ctx.fillStyle = item.type === 'theme' ? '#ff33ff' : (item.type === 'weapon' ? '#ff0000' : '#00ffcc'); 
+                    ctx.textAlign = 'left'; ctx.font = `14px ${fontStyle}`;
                     ctx.fillText(item.name, 35, item.y + 25);
-                    ctx.fillStyle = '#aaa'; ctx.font = `12px ${fontStyle}`;
+                    ctx.fillStyle = '#aaa'; ctx.font = `11px ${fontStyle}`;
                     ctx.fillText(item.desc, 35, item.y + 45);
 
                     let isBought = false; let isActive = false;
                     if (item.id === 'skin_neon' && inventory.skins.includes('neon')) { isBought = true; isActive = inventory.currentSkin === 'neon'; }
+                    if (item.id === 'skin_tank' && inventory.skins.includes('tank')) { isBought = true; isActive = inventory.currentSkin === 'tank'; }
+                    if (item.id === 'skin_ghost' && inventory.skins.includes('ghost')) { isBought = true; isActive = inventory.currentSkin === 'ghost'; }
                     if (item.id === 'theme_retro' && inventory.themes.includes('retro')) { isBought = true; isActive = inventory.currentTheme === 'retro'; }
+                    if (item.id === 'wpn_shaurma' && inventory.weapons.includes('shaurma')) { isBought = true; isActive = inventory.currentWeapon === 'shaurma'; }
                     if (item.id === 'perm_w2' && inventory.permWeapon >= 2) isBought = true;
                     if (item.id === 'perm_help' && inventory.permHelper) isBought = true;
 
-                    ctx.font = `bold 14px ${fontStyle}`;
-                    if (item.type === 'premium') {
-                        ctx.fillStyle = '#aaa'; ctx.fillText(item.price, canvas.width - 90, item.y + 35);
-                    } else if (isBought) {
-                        if (item.type === 'skin' || item.type === 'theme') {
-                            ctx.fillStyle = isActive ? '#00ff00' : '#ffaa00';
-                            ctx.fillText(isActive ? 'ВЫБРАНО' : 'НАДЕТЬ', canvas.width - 110, item.y + 35);
+                    ctx.font = `bold 13px ${fontStyle}`;
+                    if (isBought) {
+                        if (item.type === 'skin' || item.type === 'theme' || item.type === 'weapon') {
+                            ctx.fillStyle = isActive ? '#00ff00' : '#ffaa00'; ctx.fillText(isActive ? 'ВЫБРАНО' : 'НАДЕТЬ', canvas.width - 100, item.y + 35);
                         } else {
-                            ctx.fillStyle = '#00ff00'; ctx.fillText('КУПЛЕНО', canvas.width - 110, item.y + 35);
+                            ctx.fillStyle = '#00ff00'; ctx.fillText('КУПЛЕНО', canvas.width - 100, item.y + 35);
                         }
                     } else {
-                        ctx.fillStyle = '#ffcc00'; ctx.fillText(`${item.price} 🪙`, canvas.width - 100, item.y + 35);
+                        ctx.fillStyle = '#ffcc00'; ctx.fillText(`${item.price} 🪙`, canvas.width - 90, item.y + 35);
                     }
                 });
 
-                if (shopMsgTimer > 0) { ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = `bold 18px ${fontStyle}`; ctx.fillText(shopMsg, canvas.width / 2, canvas.height - 80); shopMsgTimer--; }
+                if (shopMsgTimer > 0) { ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = `bold 18px ${fontStyle}`; ctx.fillText(shopMsg, canvas.width / 2, shopItems[shopItems.length-1].y + 100); shopMsgTimer--; }
+                
+                ctx.restore(); // Восстанавливаем трансформацию
+                // Кнопка назад всегда прилеплена к низу (не скроллится)
                 ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = `bold 24px ${fontStyle}`; ctx.fillText('<<< НАЗАД', canvas.width / 2, canvas.height - 30);
             }
             else if (gameState === 'PLAYING' || gameState === 'GAME_OVER' || gameState === 'LEVEL_TRANSITION') {
@@ -486,22 +552,34 @@
                 collectibles.forEach(c => { ctx.fillStyle = '#ffcc00'; ctx.shadowBlur = 10; ctx.shadowColor = '#ffcc00'; let squish = Math.sin(coinAnimTimer) * c.size/2; ctx.beginPath(); ctx.ellipse(c.x + c.size/2, c.y + c.size/2, Math.abs(squish) + 2, c.size/2, 0, 0, Math.PI*2); ctx.fill(); });
                 powerups.forEach(p => { 
                     if (p.type === 'shield') ctx.fillStyle = '#00aaff';
+                    else if (p.type === 'magnet') ctx.fillStyle = '#ff00ff'; // Пурпурный магнит
                     else ctx.fillStyle = p.type === 'weapon' ? '#00ffcc' : '#ffcc00'; 
                     ctx.shadowBlur = 10; ctx.shadowColor = ctx.fillStyle; ctx.beginPath(); ctx.arc(p.x + p.size/2, p.y + p.size/2, p.size/2, 0, Math.PI*2); ctx.fill(); 
                     ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center'; 
-                    let letter = 'W'; if(p.type === 'helper') letter = 'H'; if(p.type === 'shield') letter = 'S';
+                    let letter = 'W'; if(p.type === 'helper') letter = 'H'; if(p.type === 'shield') letter = 'S'; if(p.type === 'magnet') letter = 'M';
                     ctx.fillText(letter, p.x + p.size/2, p.y + p.size/2 + 4); 
                 });
                 ctx.shadowBlur = 0;
 
-                bullets.forEach(b => { ctx.fillStyle = b.color; ctx.shadowBlur = 10; ctx.shadowColor = b.color; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.width, b.height, 3); ctx.fill(); });
+                bullets.forEach(b => { 
+                    if (b.type === 'shaurma') {
+                        // Отрисовка шаурмы
+                        ctx.save(); ctx.translate(b.x + b.width/2, b.y + b.height/2); ctx.rotate(b.angle);
+                        ctx.fillStyle = '#d2b48c'; ctx.fillRect(-b.width/2, -b.height/2, b.width, b.height); // Лаваш
+                        ctx.fillStyle = '#8b4513'; ctx.fillRect(-b.width/4, -b.height/4, b.width/2, b.height/2); // Мясо
+                        ctx.fillStyle = '#00ff00'; ctx.fillRect(-b.width/3, -b.height/3, 5, 5); // Капуста
+                        ctx.restore();
+                    } else {
+                        ctx.fillStyle = b.color; ctx.shadowBlur = 10; ctx.shadowColor = b.color; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.width, b.height, 3); ctx.fill(); 
+                    }
+                });
                 enemyBullets.forEach(b => { ctx.fillStyle = '#ff0000'; ctx.shadowBlur = 10; ctx.shadowColor = '#ff0000'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.width, b.height, 3); ctx.fill(); });
                 ctx.shadowBlur = 0;
 
                 enemies.forEach(e => { 
                     if (e.type === 'asteroid') {
                         ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(e.x + e.width/2, e.y + e.height/2, e.width/2, 0, Math.PI*2); ctx.fill();
-                        ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(e.x + e.width/3, e.y + e.height/3, e.width/6, 0, Math.PI*2); ctx.fill(); // кратер
+                        ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(e.x + e.width/3, e.y + e.height/3, e.width/6, 0, Math.PI*2); ctx.fill(); 
                     } else {
                         if (enemyImg.complete) ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height); 
                     }
@@ -513,25 +591,44 @@
                 }
 
                 if ((gameState === 'PLAYING' || gameState === 'LEVEL_TRANSITION' || hitEffectTimer > 0) && player.y < canvas.height + 50) {
-                    // ОТРИСОВКА ЩИТА
+                    
                     if (shieldTimer > 0) {
                         ctx.beginPath(); ctx.arc(player.x + player.width/2, player.y + player.height/2, 45, 0, Math.PI*2);
                         ctx.strokeStyle = `rgba(0, 170, 255, ${Math.abs(Math.sin(shieldTimer/10)) + 0.5})`; ctx.lineWidth = 4; ctx.stroke();
                         ctx.fillStyle = 'rgba(0, 170, 255, 0.2)'; ctx.fill();
                     }
 
+                    ctx.save();
                     if (inventory.currentSkin === 'neon') { ctx.shadowBlur = 20; ctx.shadowColor = '#00ffff'; }
-                    if (playerImg.complete) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
-                    ctx.shadowBlur = 0; 
+                    if (inventory.currentSkin === 'ghost') { ctx.globalAlpha = 0.5; }
+                    
+                    if (inventory.currentSkin === 'tank') {
+                        // Отрисовка танка (вместо картинки)
+                        ctx.fillStyle = '#4b5320'; ctx.fillRect(player.x, player.y + 20, player.width, player.height - 20); // Корпус
+                        ctx.fillStyle = '#333'; ctx.fillRect(player.x - 5, player.y + 20, 10, player.height - 20); // Гусеница Л
+                        ctx.fillStyle = '#333'; ctx.fillRect(player.x + player.width - 5, player.y + 20, 10, player.height - 20); // Гусеница П
+                        ctx.fillStyle = '#556b2f'; ctx.fillRect(player.x + 20, player.y + 30, 30, 30); // Башня
+                        ctx.fillStyle = '#222'; ctx.fillRect(player.x + 30, player.y, 10, 30); // Дуло
+                    } else {
+                        if (playerImg.complete) ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+                    }
+                    ctx.restore(); 
 
                     if (hasHelper) { let hx = player.x + player.width/2 + Math.cos(helperAngle) * 60; let hy = player.y + player.height/2 + Math.sin(helperAngle) * 60; ctx.fillStyle = '#ffcc00'; ctx.beginPath(); ctx.arc(hx, hy, 10, 0, Math.PI*2); ctx.fill(); }
                 }
+
+                // Всплывающие тексты (+1)
+                floatTexts.forEach(ft => {
+                    ctx.fillStyle = ft.color; ctx.globalAlpha = Math.max(0, ft.life);
+                    ctx.font = `bold 16px ${fontStyle}`; ctx.textAlign = 'center';
+                    ctx.fillText(ft.text, ft.x, ft.y);
+                });
+                ctx.globalAlpha = 1.0;
 
                 if (gameState === 'LEVEL_TRANSITION') { ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = `bold 32px ${fontStyle}`; ctx.fillText(`УРОВЕНЬ ПРОЙДЕН`, canvas.width / 2, canvas.height / 2 - 20); ctx.fillStyle = '#00ffcc'; ctx.font = `bold 20px ${fontStyle}`; ctx.fillText(`ПОЛЕТ К УРОВНЮ ${level + 1}...`, canvas.width / 2, canvas.height / 2 + 20); }
 
                 ctx.fillStyle = '#ffffff'; ctx.font = `bold 20px ${fontStyle}`; ctx.textAlign = 'left'; ctx.fillText(`SCORE: ${score}`, 15, 35); ctx.fillStyle = '#00ffcc'; ctx.fillText(`MAP: ${level}`, 15, 60);
                 
-                // ИСПРАВЛЕНА МАТЕМАТИКА МОНЕТ
                 ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right'; ctx.fillText(`🪙 ${Number(bankCoins) + Number(sessionCoins)}`, canvas.width - 15, 60);
                 ctx.fillText('❤️'.repeat(Math.max(0, lives)), canvas.width - 15, 35);
                 drawUIButtons();
@@ -543,56 +640,67 @@
             update(); requestAnimationFrame(draw);
         }
 
+        // ОБРАБОТКА ТАПОВ И СКРОЛЛА
         canvas.addEventListener('touchstart', (e) => {
             initWebAudio(); 
             const touch = e.touches[0];
+            lastTouchY = touch.clientY; // Для скролла
 
             if (gameState === 'DAILY_BONUS') {
-                bankCoins += 500;
-                sendScoreToDatabase(bestScore, 500); // Сохраняем бонус
-                playSFX('shoot', 0.2);
-                gameState = 'MENU';
-                return;
+                bankCoins += 500; sendScoreToDatabase(bestScore, 500); playSFX('shoot', 0.2); gameState = 'MENU'; return;
             }
             
             if (touch.clientX >= btnMusic.x && touch.clientX <= btnMusic.x + btnMusic.w && touch.clientY >= btnMusic.y && touch.clientY <= btnMusic.y + btnMusic.h) { 
-                isMusicMuted = !isMusicMuted; bgMusic.muted = isMusicMuted; 
-                if (!isMusicMuted && bgMusic.paused) bgMusic.play().catch(()=>{}); return; 
+                isMusicMuted = !isMusicMuted; bgMusic.muted = isMusicMuted; if (!isMusicMuted && bgMusic.paused) bgMusic.play().catch(()=>{}); return; 
             }
             if (touch.clientX >= btnSfx.x && touch.clientX <= btnSfx.x + btnSfx.w && touch.clientY >= btnSfx.y && touch.clientY <= btnSfx.y + btnSfx.h) { 
                 isSfxMuted = !isSfxMuted; return; 
             }
 
             if (gameState === 'MENU') {
-                if (touch.clientY > canvas.height/2 + 50 && touch.clientY < canvas.height/2 + 100) { gameState = 'SHOP'; return; }
-                // КЛИК ПО "ИЗМЕНИТЬ"
-                if (touch.clientY > canvas.height/2 + 175 && touch.clientY < canvas.height/2 + 215) { 
-                    gameState = 'PROFILE'; document.getElementById('nicknameInput').value = nickname; document.getElementById('profileModal').style.display = 'flex'; return; 
-                }
+                if (touch.clientY > canvas.height/2 + 20 && touch.clientY < canvas.height/2 + 60) { shopScrollY = 0; gameState = 'SHOP'; return; }
+                // Открытие ЛИДЕРБОРДА
+                if (touch.clientY > canvas.height/2 + 70 && touch.clientY < canvas.height/2 + 110) { fetchTopPlayers(); gameState = 'LEADERBOARD'; return; }
+                if (touch.clientY > canvas.height/2 + 185 && touch.clientY < canvas.height/2 + 225) { gameState = 'PROFILE'; document.getElementById('nicknameInput').value = nickname; document.getElementById('profileModal').style.display = 'flex'; return; }
                 resetGame(); return; 
+            }
+
+            if (gameState === 'LEADERBOARD') {
+                if (touch.clientY > canvas.height - 60) { gameState = 'MENU'; return; }
+                return;
             }
             
             if (gameState === 'SHOP') {
-                let clickedItem = shopItems.find(i => touch.clientY > i.y && touch.clientY < i.y + 65);
-                if (clickedItem) {
-                    if (clickedItem.type === 'premium') { shopMsg = "СКОРО В ОБНОВЛЕНИИ!"; shopMsgTimer = 60; return; }
+                isDraggingShop = true;
+                
+                if (touch.clientY > canvas.height - 60) { gameState = 'MENU'; return; }
 
+                // Корректируем клик с учетом скролла
+                let adjustedY = touch.clientY - shopScrollY;
+                let clickedItem = shopItems.find(i => adjustedY > i.y && adjustedY < i.y + 60);
+                if (clickedItem) {
                     let isBought = false;
                     if (clickedItem.id === 'skin_neon' && inventory.skins.includes('neon')) isBought = true;
+                    if (clickedItem.id === 'skin_tank' && inventory.skins.includes('tank')) isBought = true;
+                    if (clickedItem.id === 'skin_ghost' && inventory.skins.includes('ghost')) isBought = true;
                     if (clickedItem.id === 'theme_retro' && inventory.themes.includes('retro')) isBought = true;
+                    if (clickedItem.id === 'wpn_shaurma' && inventory.weapons.includes('shaurma')) isBought = true;
                     if (clickedItem.id === 'perm_w2' && inventory.permWeapon >= 2) isBought = true;
                     if (clickedItem.id === 'perm_help' && inventory.permHelper) isBought = true;
 
                     if (isBought) {
-                        if (clickedItem.type === 'skin') { inventory.currentSkin = inventory.currentSkin === 'neon' ? 'default' : 'neon'; saveInv(); playSFX('shoot', 0.1); }
+                        if (clickedItem.type === 'skin') { inventory.currentSkin = inventory.currentSkin === clickedItem.id.split('_')[1] ? 'default' : clickedItem.id.split('_')[1]; saveInv(); playSFX('shoot', 0.1); }
                         if (clickedItem.type === 'theme') { inventory.currentTheme = inventory.currentTheme === 'retro' ? 'default' : 'retro'; saveInv(); playSFX('shoot', 0.1); }
+                        if (clickedItem.type === 'weapon') { inventory.currentWeapon = inventory.currentWeapon === 'shaurma' ? 'default' : 'shaurma'; saveInv(); playSFX('shoot', 0.1); }
                     } else {
                         if (bankCoins >= clickedItem.price) {
-                            bankCoins -= clickedItem.price; 
-                            sendScoreToDatabase(bestScore, -clickedItem.price); 
+                            bankCoins -= clickedItem.price; sendScoreToDatabase(bestScore, -clickedItem.price); 
                             
                             if (clickedItem.id === 'skin_neon') inventory.skins.push('neon');
+                            if (clickedItem.id === 'skin_tank') inventory.skins.push('tank');
+                            if (clickedItem.id === 'skin_ghost') inventory.skins.push('ghost');
                             if (clickedItem.id === 'theme_retro') inventory.themes.push('retro');
+                            if (clickedItem.id === 'wpn_shaurma') inventory.weapons.push('shaurma');
                             if (clickedItem.id === 'perm_w2') inventory.permWeapon = 2;
                             if (clickedItem.id === 'perm_help') inventory.permHelper = true;
                             
@@ -601,8 +709,6 @@
                     }
                     return;
                 }
-
-                if (touch.clientY > canvas.height - 60) { gameState = 'MENU'; return; }
             }
             if (gameState === 'GAME_OVER') { gameState = 'MENU'; return; }
             if (gameState === 'PROFILE') return; 
@@ -611,11 +717,24 @@
             if (gameState === 'PLAYING') { player.x = touch.clientX - player.width / 2; player.y = touch.clientY - player.height / 2; }
         }, { passive: false });
         
-        canvas.addEventListener('touchend', () => isTouching = false, { passive: false });
+        canvas.addEventListener('touchend', () => { isTouching = false; isDraggingShop = false; }, { passive: false });
+        
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            if (gameState !== 'PLAYING') return;
             const touch = e.touches[0];
+
+            if (gameState === 'SHOP' && isDraggingShop) {
+                let deltaY = touch.clientY - lastTouchY;
+                shopScrollY += deltaY;
+                // Ограничиваем скролл (чтобы не улетело в космос)
+                if (shopScrollY > 0) shopScrollY = 0;
+                let maxScroll = -(shopItems[shopItems.length-1].y - canvas.height + 200);
+                if (shopScrollY < maxScroll) shopScrollY = maxScroll;
+                lastTouchY = touch.clientY;
+                return;
+            }
+
+            if (gameState !== 'PLAYING') return;
             player.x = touch.clientX - player.width / 2; player.y = touch.clientY - player.height / 2;
             if (player.x < 0) player.x = 0; if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
             if (player.y < 0) player.y = 0; if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
