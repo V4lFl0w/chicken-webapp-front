@@ -14,7 +14,7 @@
             background: linear-gradient(to bottom, #ffcc00, #f39c12); color: #4a2511;
             border: 2px solid #fff; border-radius: 12px;
             padding: 10px 18px; font-weight: 900; font-size: 14px;
-            z-index: 100; cursor: pointer; display: none;
+            z-index: 100; cursor: pointer; display: block;
             box-shadow: 0 6px 0 #b8730b, 0 10px 15px rgba(0,0,0,0.3); 
             text-transform: uppercase; letter-spacing: 1px; transition: 0.1s;
         }
@@ -22,7 +22,7 @@
     </style>
 </head>
 <body>
-    <button id="backBtn" onclick="window.location.href='../index.html'">◀ В МЕНЮ</button>
+    <button id="backBtn" onclick="window.location.href='../index.html'">◀ ХАБ</button>
     <canvas id="gameCanvas"></canvas>
 
     <script>
@@ -35,26 +35,23 @@
         const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
 
         let bankCoins = 0;       
-        let bestScore = 0;       
         let nickname = user.username || user.first_name || "Строитель";
 
         async function loadUserData() {
             try {
                 const res = await fetch(`${BACKEND_URL}/get_user`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ telegram_id: user.id, username: nickname })
                 });
                 const data = await res.json();
                 bankCoins = Number(data.coins) || 0;
-            } catch(e) { console.error("Ошибка БД:", e); }
+            } catch(e) { console.error(e); }
         }
         
         async function sendScoreToDatabase(finalScore, collectedCoins) {
             try {
                 const res = await fetch(`${BACKEND_URL}/save_score`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ telegram_id: user.id, username: nickname, score: 0, coins: collectedCoins }) 
                 });
                 const result = await res.json();
@@ -101,14 +98,18 @@
         const blockW = 100; const blockH = 75;
         let blocks = []; 
         let activeBlock = null; 
-        let fallingBlocks = []; // Для промахнувшихся блоков (чтобы игра не висла)
-        let spawnDelay = 0; // Задержка появления нового блока
+        let fallingBlocks = []; 
+        let spawnDelay = 0; 
 
         let cameraY = 0; let targetCameraY = 0;
         let shakeTime = 0;
-        let towerSquish = 0; // Пружинящий эффект башни
+        let towerSquish = 0; 
 
-        // ФИЗИКА
+        // БАЛАНС БАШНИ (Пизанская Башня)
+        let towerBalance = 0; // от -100 (крен влево) до +100 (крен вправо)
+        let towerTiltAngle = 0; // Визуальный угол наклона всей башни
+        let towerCollapseAnim = false; // Триггер тотального разрушения
+
         let ropeLength = 200;
         let craneTick = 0;
         let craneSpeed = 0.035;
@@ -117,7 +118,6 @@
         let particles = []; let floatTexts = [];
         let bgLayers = { back: [], mid: [], front: [], clouds: [] };
 
-        // ГЕНЕРАЦИЯ ЖИВОГО ФОНА
         function initBackground() {
             bgLayers = { back: [], mid: [], front: [], clouds: [] };
             for(let i=0; i<10; i++) bgLayers.back.push({ x: Math.random()*canvas.width, w: 60+Math.random()*60, h: 200+Math.random()*300, offset: 0.1 });
@@ -134,7 +134,7 @@
         function createConfetti(x, y, isPerfect) {
             playSFX('hit', 0.15);
             shakeTime = isPerfect ? 12 : 5; 
-            towerSquish = isPerfect ? 20 : 8; // Пружина! Башня сжимается на 20px
+            towerSquish = isPerfect ? 20 : 8; 
             const colors = isPerfect ? ['#ffcc00', '#fff', '#00ffcc'] : ['#ccc', '#888'];
             for (let i = 0; i < (isPerfect ? 30 : 10); i++) {
                 particles.push({
@@ -147,62 +147,80 @@
             }
         }
 
+        // РАЗРУШЕНИЕ ВСЕЙ БАШНИ
+        function collapseTower() {
+            playSFX('hit', 0.5);
+            shakeTime = 40;
+            towerCollapseAnim = true;
+            lives = 0; // Мгновенный геймовер
+            
+            // Превращаем все блоки в падающий мусор
+            for (let i = 1; i < blocks.length; i++) {
+                let b = blocks[i];
+                b.vy = -5 + Math.random() * 5; 
+                b.vx = (Math.random() - 0.5) * 10 + (towerBalance > 0 ? 5 : -5); // Падают в сторону крена
+                b.va = (Math.random() - 0.5) * 0.2;
+                fallingBlocks.push(b);
+            }
+            blocks = [blocks[0]]; // Оставляем только фундамент
+            
+            setTimeout(() => {
+                gameState = 'GAME_OVER';
+                document.getElementById('backBtn').style.display = 'block';
+                sendScoreToDatabase(score, sessionCoins);
+            }, 1500);
+        }
+
         function resetGame() {
             score = 0; population = 0; combo = 0; sessionCoins = 0; lives = 3;
             blocks = []; fallingBlocks = []; floatTexts = []; particles = [];
             cameraY = 0; targetCameraY = 0; craneTick = 0; craneSpeed = 0.035; spawnDelay = 0;
+            towerBalance = 0; towerTiltAngle = 0; towerCollapseAnim = false;
             
             blocks.push({ x: canvas.width / 2, y: canvas.height - 30, w: blockW + 40, h: 80, type: 'base', isPerfect: false });
             
             spawnBlock();
             gameState = 'PLAYING';
-            document.getElementById('backBtn').style.display = 'none';
+            document.getElementById('backBtn').style.display = 'block';
         }
 
         function spawnBlock() {
             activeBlock = { x: canvas.width / 2, y: -50, w: blockW, h: blockH, isDropping: false, vy: 0, type: 'normal', angle: 0 };
         }
 
-        // КРАСИВЫЙ РЕНДЕР БЛОКОВ
         function drawBlock(ctx, block, isFalling) {
             ctx.save(); 
             ctx.translate(block.x, block.y);
-            if (isFalling) ctx.rotate(block.angle); // Вращение при падении
+            if (isFalling) ctx.rotate(block.angle); 
             
             let w = block.w; let h = block.h;
 
             if (block.type === 'base') {
-                ctx.fillStyle = '#2c3e50'; ctx.fillRect(-w/2, -h/2, w, h);
-                ctx.fillStyle = '#1a252f'; ctx.fillRect(-w/2, -h/2, w, 15);
-                ctx.fillStyle = '#e67e22'; ctx.fillRect(-w/4, -h/2+15, w/2, h); // Входная дверь
+                let grad = ctx.createLinearGradient(0, -h/2, 0, h/2);
+                grad.addColorStop(0, '#555'); grad.addColorStop(1, '#222');
+                ctx.fillStyle = grad; ctx.fillRect(-w/2, -h/2, w, h);
+                ctx.fillStyle = '#111'; ctx.fillRect(-w/2, -h/2, w, 8); 
             } else {
-                // Основной цвет (зависит от комбо)
-                let hue = block.isPerfect ? 40 : 5; // Золотой или Красный
+                let hue = block.isPerfect ? 40 : 5; 
                 let grad = ctx.createLinearGradient(-w/2, -h/2, w/2, h/2);
                 grad.addColorStop(0, `hsl(${hue}, 80%, 60%)`);
                 grad.addColorStop(1, `hsl(${hue}, 80%, 40%)`);
                 
-                // Тень блока
                 ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(-w/2 + 6, -h/2 + 6, w, h);
-                
                 ctx.fillStyle = grad; ctx.fillRect(-w/2, -h/2, w, h);
                 
-                // Карниз (Псевдо 3D)
                 ctx.fillStyle = '#f5f6fa'; ctx.fillRect(-w/2 - 6, -h/2, w + 12, 10);
                 ctx.fillStyle = '#dcdde1'; ctx.fillRect(-w/2 - 6, -h/2 + 10, w + 12, 4);
 
-                // Окна
                 for(let i=-1; i<=1; i++) {
                     let wx = i * 28 - 12; let wy = -h/2 + 25;
-                    ctx.fillStyle = block.isPerfect ? '#f1c40f' : '#34e7e4'; // Свет горит, если перфект
+                    ctx.fillStyle = block.isPerfect ? '#f1c40f' : '#34e7e4'; 
                     ctx.fillRect(wx, wy, 24, 35);
-                    ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(wx, wy, 24, 5); // Тень в раме
+                    ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(wx, wy, 24, 5); 
                     
-                    // Блик стекла
                     ctx.fillStyle = 'rgba(255,255,255,0.4)';
                     ctx.beginPath(); ctx.moveTo(wx, wy+15); ctx.lineTo(wx+15, wy); ctx.lineTo(wx+24, wy); ctx.lineTo(wx, wy+24); ctx.fill();
                     
-                    // Белая рама
                     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(wx, wy, 24, 35);
                     ctx.fillRect(wx + 11, wy, 2, 35); 
                 }
@@ -219,14 +237,14 @@
         function update() {
             if (gameState !== 'PLAYING') return;
 
-            // Пружина башни (возвращается в 0)
             towerSquish += (0 - towerSquish) * 0.15;
-            
-            // Плавная камера
             cameraY += (targetCameraY - cameraY) * 0.08; 
             if (shakeTime > 0) shakeTime--;
 
-            // Облака
+            // Визуальный наклон башни от баланса
+            let targetTilt = (towerBalance / 100) * (Math.PI / 8); 
+            towerTiltAngle += (targetTilt - towerTiltAngle) * 0.1;
+
             bgLayers.clouds.forEach(c => { c.x += c.speed; if(c.x > canvas.width + c.size) c.x = -c.size; });
 
             for (let i = particles.length - 1; i >= 0; i--) {
@@ -239,20 +257,18 @@
                 if (ft.life <= 0) floatTexts.splice(i, 1);
             }
 
-            // Логика задержки спавна (решает проблему "зависания")
             if (spawnDelay > 0) {
                 spawnDelay--;
-                if (spawnDelay <= 0 && lives > 0) spawnBlock();
+                if (spawnDelay <= 0 && lives > 0 && !towerCollapseAnim) spawnBlock();
             }
 
-            // Логика блоков, которые промазали и падают
             for (let i = fallingBlocks.length - 1; i >= 0; i--) {
                 let b = fallingBlocks[i];
                 b.vy += 0.8; b.y += b.vy; b.x += b.vx; b.angle += b.va;
-                if (b.y > cameraY + canvas.height + 100) fallingBlocks.splice(i, 1); // Удаляем, когда упал за экран
+                if (b.y > cameraY + canvas.height + 100) fallingBlocks.splice(i, 1); 
             }
 
-            if (activeBlock) {
+            if (activeBlock && !towerCollapseAnim) {
                 if (!activeBlock.isDropping) {
                     craneTick += craneSpeed;
                     let angle = Math.sin(craneTick) * maxAngle;
@@ -261,29 +277,44 @@
                     activeBlock.x = pivotX + Math.sin(angle) * ropeLength;
                     activeBlock.y = pivotY + Math.cos(angle) * ropeLength; 
                 } else {
-                    activeBlock.vy += 0.9; // Мощная гравитация
+                    activeBlock.vy += 0.9; 
                     activeBlock.y += activeBlock.vy;
 
                     let topBlock = blocks[blocks.length - 1];
+                    
+                    // Учитываем визуальный наклон для точки столкновения
+                    let visualTopX = topBlock.x + Math.sin(towerTiltAngle) * (canvas.height - topBlock.y);
 
-                    // СТОЛКНОВЕНИЕ С ВЕРХНИМ БЛОКОМ
                     if (activeBlock.y + activeBlock.h / 2 >= topBlock.y - topBlock.h / 2) {
-                        let distance = Math.abs(activeBlock.x - topBlock.x);
                         
-                        if (distance < activeBlock.w / 2 + 20) {
-                            // ПОПАЛ НА БАШНЮ
+                        let distance = activeBlock.x - visualTopX; // Смещение: + это правее, - это левее
+                        let absDist = Math.abs(distance);
+                        
+                        if (absDist < activeBlock.w / 2 + 15) {
+                            // ПОПАЛ
                             let isPerfect = false; let addedPop = 0;
 
-                            if (distance <= 15) { // PERFECT
-                                activeBlock.x = topBlock.x; isPerfect = true; combo++;
+                            // ВЫЧИСЛЯЕМ БАЛАНС
+                            let balanceImpact = distance * 0.5; // Насколько сильно блок смещает центр
+                            
+                            // Если мы были в опасной зоне и выровняли
+                            if (Math.abs(towerBalance) > 60 && Math.sign(towerBalance) !== Math.sign(balanceImpact)) {
+                                createFloatText(activeBlock.x, activeBlock.y - 80, `ВЫРОВНЯЛ! +500`, '#00ffcc', 28);
+                                score += 500;
+                            }
+
+                            towerBalance += balanceImpact;
+
+                            if (absDist <= 12) { 
+                                activeBlock.x = visualTopX; isPerfect = true; combo++;
                                 addedPop = 30 + (combo * 5); score += 50 * combo;
-                                createFloatText(activeBlock.x, activeBlock.y - 50, `PERFECT! +${addedPop} 👨‍👩‍👧`, '#ffcc00', 30);
-                            } else if (distance <= 35) { // GOOD
+                                createFloatText(activeBlock.x, activeBlock.y - 40, `PERFECT! +${addedPop}`, '#ffcc00', 26);
+                            } else if (absDist <= 35) { 
                                 combo = 0; addedPop = 15; score += 20;
-                                createFloatText(activeBlock.x, activeBlock.y - 50, `GOOD! +${addedPop} 👨‍👩‍👧`, '#00ffcc', 24);
-                            } else { // OKAY (КРИВО)
+                                createFloatText(activeBlock.x, activeBlock.y - 40, `GOOD! +${addedPop}`, '#00ffcc', 22);
+                            } else { 
                                 combo = 0; addedPop = 5; score += 10;
-                                createFloatText(activeBlock.x, activeBlock.y - 50, `OKAY +${addedPop}`, '#ffffff', 20);
+                                createFloatText(activeBlock.x, activeBlock.y - 40, `OKAY +${addedPop}`, '#ffffff', 18);
                             }
 
                             population += addedPop;
@@ -292,37 +323,42 @@
                             blocks.push(activeBlock);
                             createConfetti(activeBlock.x, activeBlock.y, isPerfect);
                             
-                            // Экономика
                             if (blocks.length % 3 === 0) {
                                 let reward = isPerfect ? 5 : 2; sessionCoins += reward;
                                 createFloatText(activeBlock.x + 80, activeBlock.y - 20, `+${reward} 🪙`, '#ffcc00', 22);
                             }
 
-                            targetCameraY -= blockH;
-                            craneSpeed = Math.min(0.065, craneSpeed + 0.0008); 
-                            
-                            activeBlock = null;
-                            spawnDelay = 20; // Пауза перед новым блоком
+                            // ПРОВЕРКА НА ОБРУШЕНИЕ
+                            if (Math.abs(towerBalance) > 100) {
+                                collapseTower();
+                            } else {
+                                targetCameraY -= blockH;
+                                craneSpeed = Math.min(0.065, craneSpeed + 0.0008); 
+                                activeBlock = null;
+                                spawnDelay = 20; 
+                            }
 
                         } else {
-                            // ПРОМАХ (задел край)
+                            // ПРОМАХ 
                             combo = 0; playSFX('hit', 0.2); lives--; shakeTime = 20;
                             createFloatText(activeBlock.x, activeBlock.y, "ПРОМАХ!", '#ff3366', 32);
                             
-                            // Превращаем блок в падающий объект с физикой вращения
-                            activeBlock.vx = (activeBlock.x > topBlock.x) ? 3 : -3; 
-                            activeBlock.va = (activeBlock.x > topBlock.x) ? 0.1 : -0.1;
+                            activeBlock.vx = (activeBlock.x > visualTopX) ? 3 : -3; 
+                            activeBlock.va = (activeBlock.x > visualTopX) ? 0.1 : -0.1;
                             fallingBlocks.push(activeBlock);
                             activeBlock = null;
 
-                            if (lives <= 0) {
+                            // Промах тоже шатает башню от удара!
+                            towerBalance += (distance > 0 ? 15 : -15);
+                            if (Math.abs(towerBalance) > 100) {
+                                collapseTower();
+                            } else if (lives <= 0) {
                                 gameState = 'GAME_OVER'; document.getElementById('backBtn').style.display = 'block';
                                 sendScoreToDatabase(score, sessionCoins);
-                            } else { spawnDelay = 40; } // Ждем дольше при промахе
+                            } else { spawnDelay = 40; } 
                         }
                     }
 
-                    // ЕСЛИ УПАЛ ВООБЩЕ МИМО (не задев башню)
                     else if (activeBlock && activeBlock.y > cameraY + canvas.height + 100) {
                         combo = 0; lives--; shakeTime = 20;
                         createFloatText(canvas.width/2, cameraY + canvas.height/2, "УПАЛ!", '#ff3366', 32);
@@ -337,18 +373,15 @@
         }
 
         function draw() {
-            // СОЧНЫЙ ФОН: Небо темнеет
             let heightFactor = Math.min(1, blocks.length / 50);
             let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
             grad.addColorStop(0, `rgb(${Math.max(10, 135 - heightFactor * 100)}, ${Math.max(20, 206 - heightFactor * 150)}, ${Math.max(50, 235 - heightFactor * 150)})`);
             grad.addColorStop(1, `rgb(${Math.max(50, 175 - heightFactor * 80)}, ${Math.max(100, 226 - heightFactor * 100)}, ${Math.max(150, 255 - heightFactor * 50)})`);
             ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Солнце/Луна
             ctx.fillStyle = heightFactor > 0.5 ? '#f1c40f' : '#ffeba3';
             ctx.beginPath(); ctx.arc(canvas.width - 80, 150 + cameraY * 0.05, 50, 0, Math.PI*2); ctx.fill();
 
-            // Облака
             ctx.fillStyle = '#fff';
             bgLayers.clouds.forEach(c => {
                 ctx.globalAlpha = c.op; ctx.beginPath(); ctx.arc(c.x, c.y + cameraY*0.1, c.size, 0, Math.PI*2); ctx.fill();
@@ -356,7 +389,6 @@
             });
             ctx.globalAlpha = 1.0;
 
-            // Город (Параллакс)
             const drawCityLayer = (layer, colorHex) => {
                 ctx.fillStyle = colorHex;
                 layer.forEach(bg => {
@@ -385,30 +417,27 @@
 
             // --- МИР ---
             ctx.save(); 
-            // Пружина башни добавляется к камере!
             ctx.translate(shakeX, -cameraY + shakeY + towerSquish);
 
-            // Кран
-            if (activeBlock && !activeBlock.isDropping) {
+            if (activeBlock && !activeBlock.isDropping && !towerCollapseAnim) {
                 let pivotX = canvas.width / 2; let pivotY = cameraY - 50;
-                
-                // Трос
                 ctx.beginPath(); ctx.moveTo(pivotX, pivotY); ctx.lineTo(activeBlock.x, activeBlock.y - activeBlock.h/2);
                 ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 4; ctx.stroke();
-                
-                // Крюк/Держатель
-                ctx.fillStyle = '#f1c40f'; 
-                ctx.fillRect(activeBlock.x - 25, activeBlock.y - activeBlock.h/2 - 10, 50, 10);
+                ctx.fillStyle = '#f1c40f'; ctx.fillRect(activeBlock.x - 25, activeBlock.y - activeBlock.h/2 - 10, 50, 10);
             }
 
-            // Башня
+            // Вращаем саму башню (Ось вращения - самый низ экрана)
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height); 
+            ctx.rotate(towerTiltAngle);
+            ctx.translate(-canvas.width / 2, -canvas.height);
+
             blocks.forEach(b => drawBlock(ctx, b, false));
-            // Падающий блок
+            ctx.restore(); // Конец вращения башни
+
             if (activeBlock) drawBlock(ctx, activeBlock, false);
-            // Промахнувшиеся блоки (летят вниз)
             fallingBlocks.forEach(b => drawBlock(ctx, b, true));
 
-            // Эффекты
             particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life); ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); });
             ctx.globalAlpha = 1.0;
             
@@ -422,10 +451,8 @@
             ctx.restore();
             // --- КОНЕЦ МИРА ---
 
-            // --- КРАСИВЫЙ UI ПОВЕРХ ---
-            // Стеклянная панель
+            // --- UI ---
             ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; ctx.fillRect(0, 0, canvas.width, 60);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; ctx.fillRect(0, 58, canvas.width, 2);
 
             ctx.fillStyle = '#ffffff'; ctx.font = '900 20px Trebuchet MS'; ctx.textAlign = 'left';
             ctx.fillText(`👥 ${population}`, 15, 38);
@@ -439,7 +466,7 @@
 
             // ИНДИКАТОР ПРОГРЕССА СЛЕВА
             let maxTarget = 50; let currentF = blocks.length - 1;
-            let barH = 250; let barW = 14; let barX = 20; let barY = 120;
+            let barH = 200; let barW = 14; let barX = 20; let barY = 120;
             
             ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 7); ctx.fill();
             ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 2; ctx.stroke();
@@ -453,6 +480,18 @@
             ctx.fillStyle = '#fff'; ctx.font = 'bold 16px Trebuchet MS'; ctx.textAlign = 'center';
             ctx.shadowBlur = 4; ctx.shadowColor = '#000';
             ctx.fillText(`${currentF} ЭТ.`, barX + barW/2, barY - 15); ctx.shadowBlur = 0;
+
+            // ШКАЛА БАЛАНСА (Сверху по центру)
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(canvas.width/2 - 100, 70, 200, 15);
+            ctx.fillStyle = Math.abs(towerBalance) > 75 ? '#e74c3c' : (Math.abs(towerBalance) > 40 ? '#f1c40f' : '#2ecc71');
+            // Отрисовка ползунка от центра
+            if (towerBalance < 0) {
+                ctx.fillRect(canvas.width/2 - Math.abs(towerBalance), 70, Math.abs(towerBalance), 15);
+            } else {
+                ctx.fillRect(canvas.width/2, 70, towerBalance, 15);
+            }
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(canvas.width/2 - 100, 70, 200, 15);
+            ctx.fillStyle = '#fff'; ctx.fillRect(canvas.width/2 - 2, 65, 4, 25); // Риска центра
 
             if (gameState === 'GAME_OVER') {
                 ctx.fillStyle = 'rgba(10, 20, 30, 0.9)'; ctx.fillRect(0, 0, canvas.width, canvas.height); 
@@ -480,7 +519,7 @@
             if (e.target.id === 'backBtn') return;
 
             if (gameState === 'MENU' || gameState === 'GAME_OVER') { resetGame(); return; }
-            if (gameState === 'PLAYING' && activeBlock && !activeBlock.isDropping) {
+            if (gameState === 'PLAYING' && activeBlock && !activeBlock.isDropping && !towerCollapseAnim) {
                 activeBlock.isDropping = true; playSFX('drop', 0.1);
             }
         }, { passive: false });
