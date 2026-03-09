@@ -6,28 +6,29 @@
     <title>City Bloxx</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin: 0; padding: 0; background-color: #87CEEB; overflow: hidden; touch-action: none; font-family: 'Courier New', Courier, monospace; }
+        body { margin: 0; padding: 0; background-color: #4facfe; overflow: hidden; touch-action: none; font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif; }
         canvas { display: block; }
         
-        /* Кнопка "Назад в Хаб" */
         #backBtn {
             position: absolute; top: 15px; left: 15px;
-            background: rgba(0, 0, 0, 0.5); color: #fff;
+            background: linear-gradient(to bottom, #ffcc00, #f39c12); color: #4a2511;
             border: 2px solid #fff; border-radius: 8px;
-            padding: 8px 12px; font-weight: bold; font-family: inherit;
+            padding: 8px 15px; font-weight: 900; font-size: 14px;
             z-index: 100; cursor: pointer; text-decoration: none; display: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); text-transform: uppercase;
         }
+        #backBtn:active { transform: translateY(2px); box-shadow: 0 2px 3px rgba(0,0,0,0.3); }
     </style>
 </head>
 <body>
-    <button id="backBtn" onclick="window.location.href='../index.html'"><<< В МЕНЮ</button>
+    <button id="backBtn" onclick="window.location.href='../index.html'">◀ В МЕНЮ</button>
     <canvas id="gameCanvas"></canvas>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
-        tg.setHeaderColor('#87CEEB');
+        tg.setHeaderColor('#4facfe');
 
         const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Builder", username: "Guest" };
         const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
@@ -36,7 +37,6 @@
         let bestScore = 0;       
         let nickname = user.username || user.first_name || "Строитель";
 
-        // Синхронизация с сервером
         async function loadUserData() {
             try {
                 const res = await fetch(`${BACKEND_URL}/get_user`, {
@@ -49,18 +49,16 @@
             } catch(e) { console.error("Ошибка БД:", e); }
         }
         
-        // Для рекордов мы пока сохраняем общие монеты. 
-        // Позже настроим отдельную таблицу рекордов для Башен.
         async function sendScoreToDatabase(finalScore, collectedCoins) {
             try {
                 const res = await fetch(`${BACKEND_URL}/save_score`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ telegram_id: user.id, username: nickname, score: 0, coins: collectedCoins }) // Счет пока 0, чтобы не перезаписывать рекорд Космоса
+                    body: JSON.stringify({ telegram_id: user.id, username: nickname, score: 0, coins: collectedCoins }) 
                 });
                 const result = await res.json();
                 bankCoins = Number(result.coins_total); 
-            } catch (e) { console.error(e); }
+            } catch (e) {}
         }
 
         loadUserData();
@@ -70,7 +68,6 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // ЗВУКИ (Используем те же, что в космосе, для экономии)
         let audioCtx; const sfxBuffers = {};
         async function initWebAudio() {
             if (audioCtx) return;
@@ -83,8 +80,8 @@
                 } catch (e) {}
             };
             await Promise.all([
-                loadBuffer('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3', 'drop'), // Звук отцепа
-                loadBuffer('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3', 'hit')    // Звук удара
+                loadBuffer('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3', 'drop'), 
+                loadBuffer('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3', 'hit')    
             ]);
         }
 
@@ -97,52 +94,58 @@
         }
 
         // --- ПЕРЕМЕННЫЕ ИГРЫ ---
-        let gameState = 'MENU'; // MENU, PLAYING, GAME_OVER
-        let score = 0;
-        let combo = 0;
-        let sessionCoins = 0;
-        let lives = 3;
+        let gameState = 'MENU'; 
+        let score = 0; let population = 0; let combo = 0; let sessionCoins = 0; let lives = 3;
 
-        const blockW = 100;
-        const blockH = 60;
-        let blocks = []; // Построенная башня
-        let activeBlock = null; // Падающий блок
+        const blockW = 90; const blockH = 65;
+        let blocks = []; 
+        let activeBlock = null; 
 
-        let cameraY = 0; // Смещение камеры вверх по мере роста башни
-        let targetCameraY = 0;
+        let cameraY = 0; let targetCameraY = 0;
+        let shakeTime = 0;
 
-        let craneAngle = 0;
-        let craneSpeed = 0.03;
-        let craneSwing = 1.0; // Амплитуда (будет расти с высотой)
+        // ФИЗИКА МАЯТНИКА (ТЕПЕРЬ ПЛАВНАЯ)
+        let ropeLength = 180;
+        let craneTick = 0;
+        let craneSpeed = 0.035; // Очень плавная базовая скорость
+        let maxAngle = Math.PI / 3.5; // Максимальный угол отклонения
 
-        let particles = [];
-        let floatTexts = [];
+        let particles = []; let floatTexts = [];
+        let bgBuildings = []; // Город на фоне
 
-        function createFloatText(x, y, text, color, size = 20) {
-            floatTexts.push({ x: x, y: y, text: text, color: color, life: 1.0, size: size });
+        // Генерация заднего фона
+        for(let i=0; i<15; i++) {
+            bgBuildings.push({
+                x: Math.random() * canvas.width, width: 40 + Math.random() * 60,
+                height: 100 + Math.random() * 300, color: `rgba(20, 40, 60, ${0.1 + Math.random()*0.15})`,
+                speedOffset: 0.2 + Math.random() * 0.3
+            });
         }
 
-        function createConfetti(x, y) {
-            playSFX('hit', 0.1);
-            const colors = ['#ffcc00', '#00ffcc', '#ff3366', '#ffffff'];
-            for (let i = 0; i < 20; i++) {
+        function createFloatText(x, y, text, color, size = 20) {
+            floatTexts.push({ x: x, y: y, text: text, color: color, life: 1.0, size: size, vy: -1.5 });
+        }
+
+        function createConfetti(x, y, isPerfect) {
+            playSFX('hit', 0.15);
+            shakeTime = isPerfect ? 10 : 5; // Тряска экрана
+            const colors = isPerfect ? ['#ffcc00', '#fff', '#ffff99'] : ['#ccc', '#888'];
+            for (let i = 0; i < (isPerfect ? 25 : 10); i++) {
                 particles.push({
-                    x: x, y: y,
-                    vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 10 - 2,
+                    x: x + (Math.random() - 0.5) * blockW, y: y + h/2,
+                    vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8 - 2,
                     life: 1.0, decay: 0.02 + Math.random() * 0.02,
                     color: colors[Math.floor(Math.random() * colors.length)],
-                    size: Math.random() * 6 + 2
+                    size: Math.random() * (isPerfect ? 6 : 4) + 2
                 });
             }
         }
 
         function resetGame() {
-            score = 0; combo = 0; sessionCoins = 0; lives = 3;
-            blocks = [];
-            cameraY = 0; targetCameraY = 0; craneSwing = 0.8; craneSpeed = 0.03;
+            score = 0; population = 0; combo = 0; sessionCoins = 0; lives = 3;
+            blocks = []; cameraY = 0; targetCameraY = 0; craneTick = 0; craneSpeed = 0.035;
             
-            // Базовый фундамент
-            blocks.push({ x: canvas.width / 2, y: canvas.height - blockH / 2, w: blockW + 40, h: blockH, type: 'base' });
+            blocks.push({ x: canvas.width / 2, y: canvas.height - 30, w: blockW + 30, h: 60, type: 'base', isPerfect: false });
             
             spawnBlock();
             gameState = 'PLAYING';
@@ -150,36 +153,55 @@
         }
 
         function spawnBlock() {
-            activeBlock = {
-                x: canvas.width / 2, y: 100, // Начальная позиция на кране
-                w: blockW, h: blockH,
-                isDropping: false, vy: 0
-            };
+            activeBlock = { x: canvas.width / 2, y: -50, w: blockW, h: blockH, isDropping: false, vy: 0, type: 'normal' };
         }
 
-        function drawBlock(ctx, x, y, w, h, type) {
-            ctx.save();
-            ctx.translate(x, y);
+        // КРАСИВАЯ ОТРИСОВКА БЛОКА
+        function drawBlock(ctx, x, y, w, h, type, isPerfect) {
+            ctx.save(); ctx.translate(x, y);
             
             if (type === 'base') {
-                ctx.fillStyle = '#555'; ctx.fillRect(-w/2, -h/2, w, h);
-                ctx.fillStyle = '#333'; ctx.fillRect(-w/2, -h/2, w, 10);
+                // Фундамент
+                let grad = ctx.createLinearGradient(0, -h/2, 0, h/2);
+                grad.addColorStop(0, '#555'); grad.addColorStop(1, '#222');
+                ctx.fillStyle = grad; ctx.fillRect(-w/2, -h/2, w, h);
+                ctx.fillStyle = '#111'; ctx.fillRect(-w/2, -h/2, w, 8); // бордюр
             } else {
-                // Основной цвет блока (красный кирпич)
-                ctx.fillStyle = '#B22222'; ctx.fillRect(-w/2, -h/2, w, h);
-                // Окантовка крыши
-                ctx.fillStyle = '#8B0000'; ctx.fillRect(-w/2, -h/2, w, 8);
-                // Окна
-                ctx.fillStyle = '#ADD8E6'; // Голубые окна
-                ctx.fillRect(-w/2 + 10, -h/2 + 15, 20, 30);
-                ctx.fillRect(-w/2 + 40, -h/2 + 15, 20, 30);
-                ctx.fillRect(w/2 - 30, -h/2 + 15, 20, 30);
+                // Основной блок (красный кирпич, градиент)
+                let grad = ctx.createLinearGradient(-w/2, 0, w/2, 0);
+                grad.addColorStop(0, '#d35400'); grad.addColorStop(0.5, '#e74c3c'); grad.addColorStop(1, '#c0392b');
                 
-                // Рамы окон
-                ctx.fillStyle = '#fff';
-                ctx.fillRect(-w/2 + 19, -h/2 + 15, 2, 30);
-                ctx.fillRect(-w/2 + 49, -h/2 + 15, 2, 30);
-                ctx.fillRect(w/2 - 21, -h/2 + 15, 2, 30);
+                // Тень снизу
+                ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-w/2 + 4, -h/2 + 4, w, h);
+                
+                ctx.fillStyle = grad; ctx.fillRect(-w/2, -h/2, w, h);
+                
+                // Белый карниз (Крыша)
+                ctx.fillStyle = '#ecf0f1'; ctx.fillRect(-w/2 - 4, -h/2, w + 8, 8);
+                ctx.fillStyle = '#bdc3c7'; ctx.fillRect(-w/2 - 4, -h/2 + 8, w + 8, 3); // тень карниза
+
+                // Окна (Голубые с бликами)
+                for(let i=-1; i<=1; i++) {
+                    let wx = i * 26 - 10; let wy = -h/2 + 20;
+                    ctx.fillStyle = '#3498db'; ctx.fillRect(wx, wy, 20, 30); // Стекло
+                    ctx.fillStyle = '#2980b9'; ctx.fillRect(wx, wy, 20, 4);  // Тень внутри рамы
+                    
+                    // Блик
+                    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                    ctx.beginPath(); ctx.moveTo(wx, wy+10); ctx.lineTo(wx+10, wy); ctx.lineTo(wx+20, wy); ctx.lineTo(wx, wy+20); ctx.fill();
+                    
+                    // Рама
+                    ctx.strokeStyle = '#ecf0f1'; ctx.lineWidth = 2; ctx.strokeRect(wx, wy, 20, 30);
+                    ctx.fillRect(wx + 9, wy, 2, 30); // перекладина
+                }
+
+                // Свечение при комбо/перфекте
+                if (isPerfect) {
+                    ctx.shadowBlur = 20; ctx.shadowColor = '#ffcc00';
+                    ctx.strokeStyle = 'rgba(255, 204, 0, 0.8)'; ctx.lineWidth = 3;
+                    ctx.strokeRect(-w/2, -h/2, w, h);
+                    ctx.shadowBlur = 0;
+                }
             }
             ctx.restore();
         }
@@ -187,231 +209,241 @@
         function update() {
             if (gameState !== 'PLAYING') return;
 
-            // Плавное движение камеры вверх
-            cameraY += (targetCameraY - cameraY) * 0.1;
+            cameraY += (targetCameraY - cameraY) * 0.08; // Плавная камера
+            if (shakeTime > 0) shakeTime--;
 
-            // Обновление частиц
             for (let i = particles.length - 1; i >= 0; i--) {
-                let p = particles[i];
-                p.x += p.vx; p.y += p.vy; p.vy += 0.2; // гравитация частиц
-                p.life -= p.decay;
+                let p = particles[i]; p.x += p.vx; p.y += p.vy; p.vy += 0.3; p.life -= p.decay;
                 if (p.life <= 0) particles.splice(i, 1);
             }
 
-            // Обновление текстов
             for (let i = floatTexts.length - 1; i >= 0; i--) {
-                let ft = floatTexts[i]; ft.y -= 2; ft.life -= 0.02;
+                let ft = floatTexts[i]; ft.y += ft.vy; ft.life -= 0.02;
                 if (ft.life <= 0) floatTexts.splice(i, 1);
             }
 
-            // Логика Крана и Блока
             if (activeBlock) {
                 if (!activeBlock.isDropping) {
-                    // Маятник
-                    craneAngle = Math.sin(Date.now() * craneSpeed) * craneSwing;
-                    activeBlock.x = canvas.width / 2 + Math.sin(craneAngle) * 150;
-                    activeBlock.y = 50 + Math.cos(craneAngle) * 150 + cameraY; 
+                    // ПЛАВНАЯ ФИЗИКА
+                    craneTick += craneSpeed;
+                    let angle = Math.sin(craneTick) * maxAngle;
+                    
+                    let pivotX = canvas.width / 2;
+                    let pivotY = cameraY - 50; 
+                    
+                    activeBlock.x = pivotX + Math.sin(angle) * ropeLength;
+                    activeBlock.y = pivotY + Math.cos(angle) * ropeLength; 
                 } else {
-                    // Падение
                     activeBlock.vy += 0.8; // Гравитация
                     activeBlock.y += activeBlock.vy;
 
                     let topBlock = blocks[blocks.length - 1];
 
-                    // Проверка столкновения
+                    // СТОЛКНОВЕНИЕ
                     if (activeBlock.y + activeBlock.h / 2 >= topBlock.y - topBlock.h / 2) {
-                        
                         let distance = Math.abs(activeBlock.x - topBlock.x);
                         
-                        if (distance < activeBlock.w / 2 + 10) {
-                            // ПОПАЛ НА БАШНЮ
-                            
-                            // PERFECT механика (погрешность до 12px)
-                            if (distance <= 12) {
-                                activeBlock.x = topBlock.x; // Выравниваем идеально
-                                combo++;
-                                score += 10 + (combo * 5);
-                                createFloatText(activeBlock.x, activeBlock.y - 30, `PERFECT! +${10 + combo*5}`, '#ffcc00', 24);
-                                createConfetti(activeBlock.x, activeBlock.y);
-                            } else {
-                                combo = 0;
-                                score += 10;
-                                playSFX('hit', 0.05);
-                                createFloatText(activeBlock.x, activeBlock.y - 30, "+10", '#ffffff');
+                        if (distance < activeBlock.w / 2 + 15) {
+                            // ПОПАЛ
+                            let isPerfect = false;
+                            let addedPop = 0;
+
+                            if (distance <= 12) { // PERFECT
+                                activeBlock.x = topBlock.x; 
+                                isPerfect = true; combo++;
+                                addedPop = 30 + (combo * 5); score += 50 * combo;
+                                createFloatText(activeBlock.x, activeBlock.y - 40, `PERFECT! +${addedPop} 👨‍👩‍👧`, '#ffcc00', 26);
+                            } else if (distance <= 25) { // GOOD
+                                combo = 0; addedPop = 15; score += 20;
+                                createFloatText(activeBlock.x, activeBlock.y - 40, `GOOD! +${addedPop} 👨‍👩‍👧`, '#00ffcc', 22);
+                            } else { // OKAY (КРИВО)
+                                combo = 0; addedPop = 5; score += 10;
+                                createFloatText(activeBlock.x, activeBlock.y - 40, `OKAY +${addedPop} 👨‍👩‍👧`, '#ffffff', 18);
                             }
 
-                            // Закрепляем блок
+                            population += addedPop;
                             activeBlock.y = topBlock.y - blockH;
+                            activeBlock.isPerfect = isPerfect;
                             blocks.push(activeBlock);
+                            createConfetti(activeBlock.x, activeBlock.y, isPerfect);
                             
-                            // Награда в банк каждые 5 блоков
-                            if (blocks.length % 5 === 0) {
-                                sessionCoins += 10;
-                                createFloatText(activeBlock.x, activeBlock.y - 60, "+10 🪙", '#00ffcc', 20);
+                            // ЭКОНОМИКА ХАБА: Каждые 3 этажа даем монеты
+                            if (blocks.length % 3 === 0) {
+                                let reward = isPerfect ? 5 : 2;
+                                sessionCoins += reward;
+                                createFloatText(activeBlock.x + 60, activeBlock.y - 20, `+${reward} 🪙`, '#ffcc00', 20);
                             }
 
-                            // Усложнение: поднимаем камеру, ускоряем кран
                             targetCameraY -= blockH;
-                            craneSpeed = Math.min(0.06, craneSpeed + 0.001);
-                            craneSwing = Math.min(1.5, craneSwing + 0.02);
-
+                            craneSpeed = Math.min(0.06, craneSpeed + 0.0005); // Плавное усложнение
                             spawnBlock();
 
                         } else {
-                            // ПРОМАХНУЛСЯ
-                            combo = 0;
-                            playSFX('hit', 0.2); // Удар о землю или падение
-                            lives--;
-                            createFloatText(activeBlock.x, activeBlock.y, "MISS!", '#ff3366', 24);
+                            // ПРОМАХ
+                            combo = 0; playSFX('hit', 0.2); lives--; shakeTime = 15;
+                            createFloatText(activeBlock.x, activeBlock.y, "ПРОМАХ!", '#ff3366', 28);
                             
                             if (lives <= 0) {
-                                gameState = 'GAME_OVER';
-                                document.getElementById('backBtn').style.display = 'block';
+                                gameState = 'GAME_OVER'; document.getElementById('backBtn').style.display = 'block';
                                 sendScoreToDatabase(score, sessionCoins);
-                            } else {
-                                spawnBlock();
-                            }
+                            } else { spawnBlock(); }
                         }
                     }
 
-                    // Если улетел вообще мимо экрана
                     if (activeBlock && activeBlock.y > cameraY + canvas.height + 100) {
-                        combo = 0; lives--;
-                        createFloatText(canvas.width/2, cameraY + canvas.height/2, "УПАЛ!", '#ff3366', 24);
+                        combo = 0; lives--; shakeTime = 15;
+                        createFloatText(canvas.width/2, cameraY + canvas.height/2, "УПАЛ!", '#ff3366', 28);
                         if (lives <= 0) {
-                            gameState = 'GAME_OVER';
-                            document.getElementById('backBtn').style.display = 'block';
+                            gameState = 'GAME_OVER'; document.getElementById('backBtn').style.display = 'block';
                             sendScoreToDatabase(score, sessionCoins);
-                        } else {
-                            spawnBlock();
-                        }
+                        } else { spawnBlock(); }
                     }
                 }
             }
         }
 
         function draw() {
-            // Фон: небо темнеет с высотой
-            let heightFactor = Math.min(1, blocks.length / 50);
-            let skyR = Math.max(10, 135 - heightFactor * 135);
-            let skyG = Math.max(10, 206 - heightFactor * 206);
-            let skyB = Math.max(30, 235 - heightFactor * 200);
-            ctx.fillStyle = `rgb(${skyR}, ${skyG}, ${skyB})`;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // ДИНАМИЧЕСКИЙ ФОН (Зависит от высоты)
+            let heightFactor = Math.min(1, blocks.length / 60);
+            let skyR = Math.max(10, 79 - heightFactor * 70);
+            let skyG = Math.max(20, 172 - heightFactor * 150);
+            let skyB = Math.max(40, 254 - heightFactor * 200);
+            
+            let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            grad.addColorStop(0, `rgb(${skyR}, ${skyG}, ${skyB})`);
+            grad.addColorStop(1, `rgb(${skyR+40}, ${skyG+40}, ${skyB+20})`);
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Отрисовка UI (Статично на экране)
+            // ПАРАЛЛАКС ГОРОДА НА ФОНЕ
+            bgBuildings.forEach(bg => {
+                let bgY = canvas.height - bg.height + (cameraY * bg.speedOffset);
+                if (bgY < canvas.height) { // Рисуем только если видно
+                    ctx.fillStyle = bg.color;
+                    ctx.fillRect(bg.x, bgY, bg.width, canvas.height - bgY);
+                }
+            });
+
+            let shakeX = 0; let shakeY = 0;
+            if (shakeTime > 0) {
+                shakeX = (Math.random() - 0.5) * 10; shakeY = (Math.random() - 0.5) * 10;
+            }
+
             if (gameState === 'MENU') {
-                ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Courier New';
+                ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; 
+                ctx.font = 'bold 50px Trebuchet MS';
+                ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(0,0,0,0.5)';
                 ctx.fillText('CITY BLOXX', canvas.width / 2, canvas.height / 3);
-                ctx.fillStyle = '#ffffff'; ctx.font = '16px Courier New';
-                ctx.fillText('Тапни, чтобы сбросить блок.', canvas.width / 2, canvas.height / 2 - 20);
-                ctx.fillText('Строй ровно = получай комбо!', canvas.width / 2, canvas.height / 2 + 10);
+                ctx.shadowBlur = 0;
+
+                ctx.font = '16px Trebuchet MS'; ctx.fillStyle = '#e0f7fa';
+                ctx.fillText('Построй самый высокий небоскреб!', canvas.width / 2, canvas.height / 2 - 20);
                 
                 ctx.globalAlpha = Math.abs(Math.sin(Date.now() / 300));
-                ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 24px Courier New';
-                ctx.fillText('>>> ИГРАТЬ <<<', canvas.width / 2, canvas.height / 2 + 80);
+                ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 28px Trebuchet MS';
+                ctx.fillText('>>> ТАПНИ ДЛЯ СТАРТА <<<', canvas.width / 2, canvas.height / 2 + 60);
                 ctx.globalAlpha = 1.0;
                 
                 document.getElementById('backBtn').style.display = 'block';
-                requestAnimationFrame(draw);
-                return;
+                requestAnimationFrame(draw); return;
             }
 
-            // --- ОТРИСОВКА ИГРОВОГО МИРА (с учетом камеры) ---
-            ctx.save();
-            ctx.translate(0, -cameraY); // Двигаем мир вниз
+            // --- МИР ---
+            ctx.save(); ctx.translate(shakeX, -cameraY + shakeY);
 
-            // Кран (Трос)
+            // Трос крана
             if (activeBlock && !activeBlock.isDropping) {
                 ctx.beginPath();
-                ctx.moveTo(canvas.width / 2, 0 + cameraY); // Точка крепления крана ездит с камерой
+                ctx.moveTo(canvas.width / 2, cameraY - 50); 
                 ctx.lineTo(activeBlock.x, activeBlock.y - activeBlock.h/2);
-                ctx.strokeStyle = '#222'; ctx.lineWidth = 3; ctx.stroke();
+                ctx.strokeStyle = '#34495e'; ctx.lineWidth = 4; ctx.stroke();
+                
+                // Каретка крана
+                ctx.fillStyle = '#f1c40f'; ctx.fillRect(canvas.width/2 - 20, cameraY - 60, 40, 20);
             }
 
-            // Башня
-            blocks.forEach(b => drawBlock(ctx, b.x, b.y, b.w, b.h, b.type));
+            // Построенные блоки
+            blocks.forEach(b => drawBlock(ctx, b.x, b.y, b.w, b.h, b.type, b.isPerfect));
 
             // Падающий блок
-            if (activeBlock) {
-                drawBlock(ctx, activeBlock.x, activeBlock.y, activeBlock.w, activeBlock.h, 'normal');
-            }
+            if (activeBlock) drawBlock(ctx, activeBlock.x, activeBlock.y, activeBlock.w, activeBlock.h, activeBlock.type, false);
 
-            // Частицы
-            particles.forEach(p => {
-                ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life);
-                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
-            });
+            particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life); ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); });
             ctx.globalAlpha = 1.0;
 
-            // Всплывающий текст
             floatTexts.forEach(ft => {
                 ctx.fillStyle = ft.color; ctx.globalAlpha = Math.max(0, ft.life);
-                ctx.font = `bold ${ft.size}px Courier New`; ctx.textAlign = 'center';
-                ctx.fillText(ft.text, ft.x, ft.y);
+                ctx.font = `bold ${ft.size}px Trebuchet MS`; ctx.textAlign = 'center';
+                ctx.shadowBlur = 4; ctx.shadowColor = '#000';
+                ctx.fillText(ft.text, ft.x, ft.y); ctx.shadowBlur = 0;
             });
             ctx.globalAlpha = 1.0;
 
             ctx.restore();
             // --- КОНЕЦ МИРА ---
 
-            // --- ОТРИСОВКА UI ПОВЕРХ КАМЕРЫ ---
-            ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px Courier New'; ctx.textAlign = 'left';
-            ctx.fillText(`СЧЕТ: ${score}`, 15, 30);
+            // --- КРАСИВЫЙ UI ПОВЕРХ ---
+            // Панель статуса сверху
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, canvas.width, 50);
+
+            ctx.fillStyle = '#ffffff'; ctx.font = 'bold 18px Trebuchet MS'; ctx.textAlign = 'left';
+            ctx.fillText(`👥 ${population}`, 15, 32);
             
-            if (combo > 1) {
-                ctx.fillStyle = '#ffaa00';
-                ctx.fillText(`КОМБО x${combo}!`, 15, 60);
-            }
+            if (combo > 1) { ctx.fillStyle = '#ffcc00'; ctx.fillText(`🔥 КОМБО x${combo}`, 120, 32); }
 
             ctx.fillStyle = '#ffcc00'; ctx.textAlign = 'right';
-            ctx.fillText(`🪙 ${bankCoins + sessionCoins}`, canvas.width - 15, 60);
-            ctx.fillText('❤️'.repeat(Math.max(0, lives)), canvas.width - 15, 30);
+            ctx.fillText(`🪙 ${bankCoins + sessionCoins}`, canvas.width - 15, 32);
+
+            // Сердца под панелью
+            ctx.textAlign = 'right'; ctx.font = '22px Arial';
+            ctx.fillText('❤️'.repeat(Math.max(0, lives)), canvas.width - 15, 80);
+
+            // ИНДИКАТОР ПРОГРЕССА СЛЕВА (Шкала)
+            let maxTarget = 50; 
+            let currentF = blocks.length - 1;
+            let barH = 200; let barW = 12; let barX = 15; let barY = 100;
+            
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(barX, barY, barW, barH); // Фон шкалы
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(barX, barY, barW, barH); // Рамка
+            
+            let fillH = Math.min(1, currentF / maxTarget) * barH;
+            let gradBar = ctx.createLinearGradient(0, barY + barH, 0, barY);
+            gradBar.addColorStop(0, '#e74c3c'); gradBar.addColorStop(0.5, '#f1c40f'); gradBar.addColorStop(1, '#2ecc71');
+            ctx.fillStyle = gradBar;
+            ctx.fillRect(barX, barY + barH - fillH, barW, fillH); // Заливка
+
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 14px Trebuchet MS'; ctx.textAlign = 'center';
+            ctx.fillText(`${currentF} ЭТ.`, barX + barW/2, barY - 10);
 
             if (gameState === 'GAME_OVER') {
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height); 
-                ctx.fillStyle = '#ff3366'; ctx.textAlign = 'center'; ctx.font = 'bold 48px Courier New'; 
-                ctx.fillText('УПАЛО!', canvas.width / 2, canvas.height / 2 - 40); 
+                ctx.fillStyle = '#e74c3c'; ctx.textAlign = 'center'; ctx.font = 'bold 50px Trebuchet MS'; 
+                ctx.fillText('СТРОЙКА ОКОНЧЕНА', canvas.width / 2, canvas.height / 2 - 60); 
                 
-                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Courier New'; 
-                ctx.fillText(`Высота: ${blocks.length - 1} этажей`, canvas.width / 2, canvas.height / 2 + 20); 
-                ctx.fillText(`Счет: ${score}`, canvas.width / 2, canvas.height / 2 + 60); 
+                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 24px Trebuchet MS'; 
+                ctx.fillText(`Построено: ${blocks.length - 1} этажей`, canvas.width / 2, canvas.height / 2); 
+                ctx.fillText(`Население: ${population} 👥`, canvas.width / 2, canvas.height / 2 + 40); 
                 
-                ctx.fillStyle = '#ffcc00'; 
+                ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 28px Trebuchet MS'; 
                 ctx.fillText(`Заработано: +${sessionCoins} 🪙`, canvas.width / 2, canvas.height / 2 + 100); 
                 
-                ctx.font = '18px Courier New'; ctx.fillStyle = '#00ffcc'; 
-                ctx.fillText('Тапни, чтобы построить заново', canvas.width / 2, canvas.height / 2 + 160);
+                ctx.font = '18px Trebuchet MS'; ctx.fillStyle = '#00ffcc'; 
+                ctx.fillText('Тапни, чтобы начать заново', canvas.width / 2, canvas.height / 2 + 160);
             }
 
-            update();
-            requestAnimationFrame(draw);
+            update(); requestAnimationFrame(draw);
         }
 
-        // ОБРАБОТКА ТАПОВ
         window.addEventListener('touchstart', (e) => {
             initWebAudio();
-            
-            // Игнорируем клик по кнопке "Назад"
             if (e.target.id === 'backBtn') return;
 
-            if (gameState === 'MENU') {
-                resetGame();
-                return;
-            }
-            if (gameState === 'GAME_OVER') {
-                resetGame();
-                return;
-            }
-
+            if (gameState === 'MENU' || gameState === 'GAME_OVER') { resetGame(); return; }
             if (gameState === 'PLAYING' && activeBlock && !activeBlock.isDropping) {
-                activeBlock.isDropping = true;
-                playSFX('drop', 0.1);
+                activeBlock.isDropping = true; playSFX('drop', 0.1);
             }
         }, { passive: false });
 
-        draw();
-        tg.ready();
+        draw(); tg.ready();
     </script>
 </body>
 </html>
