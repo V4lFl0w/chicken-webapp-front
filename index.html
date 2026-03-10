@@ -62,6 +62,7 @@
         .icon-city { background: linear-gradient(45deg, #3a1c71, #d76d77, #ffaf7b); }
         .icon-race { background: linear-gradient(45deg, #cb2d3e, #ef473a); }
         .icon-quiz { background: linear-gradient(45deg, #11998e, #38ef7d); }
+        .icon-tetris { background: linear-gradient(45deg, #8E2DE2, #4A00E0); }
 
         /* НИЖНЕЕ НАВИГАЦИОННОЕ МЕНЮ */
         .bottom-nav {
@@ -106,7 +107,7 @@
                 <div class="game-title">City Bloxx</div>
                 <div class="game-desc">Построй самый высокий небоскреб из блоков.</div>
             </div>
-            <button class="play-btn" style="background: #ffaa00;">АЛЬФА</button>
+            <button class="play-btn">ИГРАТЬ</button>
         </div>
 
         <div class="game-card" onclick="window.location.href='/game/games/tower_defense.html'">
@@ -115,25 +116,34 @@
                 <div class="game-title">Tower Defense</div>
                 <div class="game-desc">Защищай базу от зеленых гоблинов. Сплеш-урон и танки!</div>
             </div>
-            <button class="play-btn" style="background: #ffaa00;">АЛЬФА</button>
+            <button class="play-btn">ИГРАТЬ</button>
         </div>
 
-        <div class="game-card" style="opacity: 0.6;">
+        <div class="game-card" onclick="window.location.href='/game/games/neon_racing.html'">
             <div class="game-icon icon-race">🏎️</div>
             <div class="game-info">
                 <div class="game-title">Neon Racing</div>
                 <div class="game-desc">Уворачивайся от трафика на бешеных скоростях.</div>
             </div>
-            <div class="dev-badge">СКОРО</div>
+            <button class="play-btn">ИГРАТЬ</button>
         </div>
 
-        <div class="game-card" style="opacity: 0.6;">
+        <div class="game-card" onclick="window.location.href='/game/games/tetris.html'">
+            <div class="game-icon icon-tetris">🧱</div>
+            <div class="game-info">
+                <div class="game-title">Neon Tetris</div>
+                <div class="game-desc">Классика в неоновом стиле. Собирай линии и фарми монеты!</div>
+            </div>
+            <button class="play-btn">ИГРАТЬ</button>
+        </div>
+
+        <div class="game-card" onclick="window.location.href='/game/games/quiz.html'">
             <div class="game-icon icon-quiz">🧠</div>
             <div class="game-info">
                 <div class="game-title">Что? Где? Когда?</div>
                 <div class="game-desc">Интеллектуальная викторина для элиты.</div>
             </div>
-            <div class="dev-badge">СКОРО</div>
+            <button class="play-btn">ИГРАТЬ</button>
         </div>
 
     </div>
