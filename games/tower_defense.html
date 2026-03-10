@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tower Defense - AAA Graphics</title>
+    <title>Tower Defense - AAA+ Final</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
     <style>
@@ -12,19 +12,20 @@
         
         /* ВЕРХНЯЯ ПАНЕЛЬ */
         #topUI {
-            position: absolute; top: 0; left: 0; width: 100%; height: 75px;
-            background: linear-gradient(180deg, #1e272e 0%, rgba(30, 39, 46, 0.95) 100%);
+            position: absolute; top: 0; left: 0; width: 100%; height: 60px;
+            background: linear-gradient(180deg, #1e272e 0%, rgba(30, 39, 46, 0.9) 100%);
             display: flex; justify-content: space-between; align-items: center;
-            padding: 10px 15px; box-sizing: border-box; z-index: 100;
-            border-bottom: 2px solid #f1c40f; box-shadow: 0 5px 15px rgba(0,0,0,0.6);
+            padding: 0 15px; box-sizing: border-box; z-index: 100;
+            border-bottom: 2px solid #f1c40f; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
         }
         #backBtn {
             background: linear-gradient(to bottom, #ff9f43, #ee5253); color: #fff;
-            border: 2px solid #ff9f43; border-radius: 8px; padding: 8px 12px; font-weight: 900; font-size: 12px;
+            border: 2px solid #ff9f43; border-radius: 8px;
+            padding: 8px 12px; font-weight: 900; font-size: 12px;
             cursor: pointer; box-shadow: 0 4px 0 #833471; text-transform: uppercase;
         }
         #backBtn:active { transform: translateY(4px); box-shadow: 0 0 0 #833471; }
-        
+
         #speedBtn {
             background: linear-gradient(to bottom, #0fb9b1, #38ada9); color: #fff;
             border: 2px solid #fff; border-radius: 8px; padding: 8px 12px; font-weight: 900; font-size: 12px;
@@ -32,17 +33,19 @@
         }
         #speedBtn:active { transform: translateY(4px); box-shadow: 0 0 0 #079992; }
 
-        .top-center { display: flex; flex-direction: column; align-items: center; gap: 4px;}
-        .wave-text { font-size: 18px; font-weight: 900; text-shadow: 0 2px 4px #000; letter-spacing: 1px;}
-        .stats-container { display: flex; gap: 15px; font-size: 14px; font-weight: 900; background: rgba(0,0,0,0.5); padding: 4px 12px; border-radius: 20px;}
+        .stat-bar { 
+            position: absolute; top: 65px; width: 100%; z-index: 90;
+            display: flex; justify-content: space-between; font-size: 16px; font-weight: 900; 
+            padding: 0 15px; box-sizing: border-box; text-shadow: 0 2px 4px #000;
+        }
         .stat-gold { color: #f1c40f; } .stat-lives { color: #ff4757; }
 
         /* НИЖНЯЯ ПАНЕЛЬ СТРОИТЕЛЬСТВА */
         #bottomUI {
-            position: absolute; bottom: 0; left: 0; width: 100%; height: 100px;
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 95px;
             background: linear-gradient(0deg, #1e272e 0%, rgba(30, 39, 46, 0.95) 100%);
-            display: flex; justify-content: space-around; align-items: flex-start;
-            padding: 10px 5px 25px 5px; box-sizing: border-box; z-index: 100;
+            display: flex; justify-content: space-around; align-items: flex-end;
+            padding: 10px 5px 20px 5px; box-sizing: border-box; z-index: 100;
             border-top: 2px solid #f1c40f; box-shadow: 0 -5px 20px rgba(0,0,0,0.6);
         }
         .build-btn {
@@ -61,9 +64,11 @@
         .icon-cannon { position: relative; width: 26px; height: 26px; }
         .icon-cannon::before { content: ''; position: absolute; bottom: 2px; left: 3px; width: 20px; height: 12px; background: #808e9b; border-radius: 4px; border: 2px solid #fff; }
         .icon-cannon::after { content: ''; position: absolute; top: 4px; left: 10px; width: 16px; height: 8px; background: #1e272e; transform: rotate(-30deg); }
+        
         .icon-magic { position: relative; width: 26px; height: 26px; }
         .icon-magic::before { content: ''; position: absolute; bottom: 2px; left: 3px; width: 20px; height: 12px; background: #485460; border-radius: 4px; border: 2px solid #fff; }
         .icon-magic::after { content: ''; position: absolute; top: -4px; left: 8px; width: 10px; height: 16px; background: #00d2d3; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+        
         .icon-tesla { position: relative; width: 26px; height: 26px; }
         .icon-tesla::before { content: ''; position: absolute; bottom: 2px; left: 3px; width: 20px; height: 12px; background: #3c40c6; border-radius: 4px; border: 2px solid #fff; }
         .icon-tesla::after { content: ''; position: absolute; top: 0px; left: 11px; width: 4px; height: 14px; background: #fff; box-shadow: 0 0 8px #fff; }
@@ -80,7 +85,7 @@
         .action-btn.sell { background: linear-gradient(to bottom, #ff4757, #e84118); box-shadow: 0 4px 0 #833471; }
 
         /* ОВЕРЛЕИ */
-        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,20,23,0.95); z-index: 300; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; backdrop-filter: blur(5px);}
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,20,23,0.9); z-index: 300; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; backdrop-filter: blur(5px);}
         .overlay h1 { color: #f1c40f; font-size: 38px; margin-bottom: 10px; text-transform: uppercase; text-shadow: 0 4px 10px #000;}
         .overlay-btn { background: linear-gradient(to bottom, #00d2d3, #01a3a4); color: #fff; padding: 15px 40px; border-radius: 12px; font-size: 22px; font-weight: 900; border: none; box-shadow: 0 6px 0 #006266; cursor: pointer; margin-top: 30px;}
         .overlay-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #006266; }
@@ -90,27 +95,28 @@
     
     <div id="topUI">
         <button id="backBtn" onclick="window.location.href='../index.html'">◀ ХАБ</button>
-        <div class="top-center">
-            <div class="wave-text">ВОЛНА <span id="uiWave" style="color: #f1c40f;">1</span></div>
-            <div class="stats-container">
-                <span class="stat-gold" id="uiGold">🪙 200</span>
-                <span class="stat-lives" id="uiLives">20 ❤️</span>
-            </div>
+        <div style="text-align: center; line-height: 1.2;">
+            <div style="font-weight: 900; font-size: 18px; text-shadow: 0 2px 4px #000;">ВОЛНА <span id="uiWave" style="color: #f1c40f;">1</span></div>
         </div>
         <button id="speedBtn" onclick="toggleSpeed()">⏩ x1</button>
     </div>
+    
+    <div class="stat-bar">
+        <span class="stat-gold" id="uiGold">🪙 200</span>
+        <span class="stat-lives" id="uiLives">20 ❤️</span>
+    </div>
 
     <div id="bottomUI">
-        <div class="build-btn active" onclick="selectAction('basic', this)">
+        <div class="build-card active" onclick="selectAction('basic', this)">
             <div class="icon-cannon"></div><div class="card-name">Пушка</div><div class="card-price">50g</div>
         </div>
-        <div class="build-btn" onclick="selectAction('magic', this)">
+        <div class="build-card" onclick="selectAction('magic', this)">
             <div class="icon-magic"></div><div class="card-name">Кристалл</div><div class="card-price">120g</div>
         </div>
-        <div class="build-btn" onclick="selectAction('tesla', this)">
+        <div class="build-card" onclick="selectAction('tesla', this)">
             <div class="icon-tesla"></div><div class="card-name">Тесла</div><div class="card-price">200g</div>
         </div>
-        <div class="build-btn meteor" onclick="selectAction('meteor', this)">
+        <div class="build-card meteor" onclick="selectAction('meteor', this)">
             <div class="card-icon">☄️</div><div class="card-name">Метеорит</div><div class="card-price">150g</div>
         </div>
     </div>
@@ -127,7 +133,7 @@
             2. Строй их на <span style="color:#f1c40f">каменных плитах</span>.<br>
             3. Тапай по башне для улучшения.<br>
             4. "Метеорит" выжигает толпу.<br><br>
-            <span style="color:#ff4757">Огр-Босс придет на 5 волне!</span>
+            <span style="color:#ff4757">Огр-Босс придет на 5 волне! Не зевай.</span>
         </p>
         <button class="overlay-btn" onclick="startGame()">В БОЙ!</button>
     </div>
@@ -168,7 +174,7 @@
             const gain = audioCtx.createGain(); gain.gain.value = vol; src.connect(gain); gain.connect(audioCtx.destination); src.start(0);
         }
 
-        // КОНСТАНТЫ ИГРОВОЙ ЗОНЫ (ЖЕСТКИЕ ОТСТУПЫ)
+        // КОНСТАНТЫ ИГРОВОЙ ЗОНЫ
         const UI_TOP = 85; 
         const UI_BOT = canvas.height - 110;
         const PLAY_H = UI_BOT - UI_TOP;
@@ -193,7 +199,7 @@
                 { x: W*0.25, y: UI_TOP + PLAY_H*0.45 }, 
                 { x: W*0.25, y: UI_TOP + PLAY_H*0.75 },
                 { x: W*0.75, y: UI_TOP + PLAY_H*0.75 }, 
-                { x: W*0.75, y: UI_BOT + 50 } // Замок
+                { x: W*0.75, y: UI_BOT + 50 } 
             ];
 
             plots = []; env = [];
@@ -208,13 +214,13 @@
                 env.push({x: Math.random()*W, y: UI_TOP + 10 + Math.random()*(PLAY_H-20), type: Math.random()>0.4?'tree':'rock', sz: 12+Math.random()*15});
             }
         }
-        initMap(); 
+        initMap(); // Карта существует сразу!
 
-        let showTut = localStorage.getItem('td_tut_final3');
+        let showTut = localStorage.getItem('td_tut_final4');
         if (!showTut) { document.getElementById('tutOverlay').style.display = 'flex'; } 
         else { document.getElementById('tutOverlay').style.display = 'none'; gameState = 'PLAYING'; }
 
-        window.startGame = function() { localStorage.setItem('td_tut_final3', 'true'); document.getElementById('tutOverlay').style.display = 'none'; gameState = 'PLAYING'; }
+        window.startGame = function() { localStorage.setItem('td_tut_final4', 'true'); document.getElementById('tutOverlay').style.display = 'none'; gameState = 'PLAYING'; }
         
         window.resetGame = function() {
             document.getElementById('goOverlay').style.display = 'none';
@@ -304,14 +310,14 @@
                 if(e.slw > 0) { e.slw--; e.curSpd = e.spd * 0.5; } else e.curSpd = e.spd;
                 
                 if (e.fly) {
-                    let dx = e.tx - e.x; let dy = e.ty - e.y; let dist = Math.hypot(dx, dy);
+                    let dx = e.targetX - e.x; let dy = e.targetY - e.y; let dist = Math.hypot(dx, dy);
                     if (dist < e.curSpd) { lives -= 2; triggerShake(5); explode(e.x, e.y, '#8e44ad', 1.5); e.dead = true; } 
                     else { e.x += (dx/dist)*e.curSpd; e.y += (dy/dist)*e.curSpd; }
                 } else {
-                    let t = waypoints[e.tid]; let dx = t.x - e.x; let dy = t.y - e.y; let dist = Math.hypot(dx, dy);
+                    let t = waypoints[e.targetIdx]; let dx = t.x - e.x; let dy = t.y - e.y; let dist = Math.hypot(dx, dy);
                     if (dist < e.curSpd) {
-                        e.x = t.x; e.y = t.y; e.tid++;
-                        if (e.tid >= waypoints.length) {
+                        e.x = t.x; e.y = t.y; e.targetIdx++;
+                        if (e.targetIdx >= waypoints.length) {
                             e.dead = true; lives -= (e.type==='boss'?10:(e.sz>13?2:1)); explode(e.x, e.y, '#ff4757', 3); triggerShake(15); updateUI();
                             if (lives <= 0 && gameState==='PLAYING') { gameState = 'GAME_OVER'; closeTowerMenu(); document.getElementById('goStats').innerText=`Волн: ${wave-1}\nВ Хаб: +${sessionGlobalCoins} 🪙`; document.getElementById('goOverlay').style.display='flex'; sendScoreToDatabase(sessionGlobalCoins); }
                         }
@@ -326,7 +332,7 @@
                 enemies.filter(e=>!e.dead).forEach(e=>{ let d = Math.hypot(e.x-t.x, e.y-t.y); if(d<md){md=d; ce=e;} });
 
                 if (ce && t.cd <= 0) {
-                    t.ang = Math.atan2(ce.y-(t.y-20), ce.x-t.x); 
+                    t.angle = Math.atan2(ce.y-(t.y-20), ce.x-t.x); 
                     if(t.type === 'tesla') {
                         play('shoot', 0.1, 3); t.rec = 3; t.cd = t.fr;
                         let cur = ce, node = {x: t.x, y: t.y-20}, hit = [];
@@ -339,8 +345,8 @@
                         }
                     } else {
                         play('shoot', t.type==='magic'?0.02:0.05, t.type==='magic'?1.5:1); t.rec = 8; t.cd = t.fr;
-                        bullets.push({ x: t.x+Math.cos(t.ang)*10, y: (t.y-20)+Math.sin(t.ang)*10, t: ce, spd: t.type==='magic'?7:14, dmg: t.dmg, type: t.type, tx: ce.x, ty: ce.y, sx: t.x, sy: t.y-20 });
-                        particles.push({x: t.x+Math.cos(t.ang)*20, y: (t.y-20)+Math.sin(t.ang)*20, vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4, life: 1, d: 0.08, col: t.type==='magic'?'#00d2d3':'#dcdde1', sz: 5, sp: false});
+                        bullets.push({ x: t.x+Math.cos(t.angle)*10, y: (t.y-20)+Math.sin(t.angle)*10, t: ce, spd: t.type==='magic'?7:14, dmg: t.dmg, type: t.type, tx: ce.x, ty: ce.y, sx: t.x, sy: t.y-20 });
+                        particles.push({x: t.x+Math.cos(t.angle)*20, y: (t.y-20)+Math.sin(t.angle)*20, vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4, life: 1, d: 0.08, col: t.type==='magic'?'#00d2d3':'#dcdde1', sz: 5, sp: false});
                     }
                 }
             });
@@ -351,8 +357,8 @@
                 if (dist < b.spd) {
                     b.dead = true;
                     if (b.type === 'magic') {
-                        explode(b.tx, b.ty, '#00d2d3', 1.8);
-                        enemies.forEach(e=>{ if(Math.hypot(e.x-b.tx, e.y-b.ty)<60+b.dmg/2 && !e.dead){ e.hp-=b.dmg; e.slw=150; if(e.hp<=0 && !e.dead) kill(e); } });
+                        explode(b.targetX, b.targetY, '#00d2d3', 1.8);
+                        enemies.forEach(e=>{ if(Math.hypot(e.x-b.targetX, e.y-b.targetY)<60+b.dmg/2 && !e.dead){ e.hp-=b.dmg; e.slw=150; if(e.hp<=0 && !e.dead) kill(e); } });
                     } else {
                         if(b.t.dead) return; b.t.hp -= b.dmg; particles.push({x:b.t.x,y:b.t.y,vx:(Math.random()-0.5)*6,vy:(Math.random()-0.5)*6,life:0.8,d:0.1,col:'#f1c40f',sz:4,sp:true});
                         if(b.t.hp <= 0 && !b.t.dead) kill(b.t);
@@ -404,27 +410,26 @@
             towers.splice(towers.indexOf(t), 1); selectedPlot.occ = false; selectedPlot.tower = null; closeTowerMenu();
         }
 
-        // РЕНДЕР
+        // ОТРИСОВКА В ФУНКЦИИ DRAW
         function drawTowers() {
             towers.forEach(t => {
                 const bx = t.x; const by = t.y; const sz = 20; 
                 ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(bx, by+10, sz*1.2, sz*0.6, 0, 0, Math.PI*2); ctx.fill();
                 
-                // 3D Основание
                 ctx.fillStyle = '#485460'; ctx.fillRect(bx-15, by-10, 30, 15);
                 ctx.beginPath(); ctx.ellipse(bx, by+5, 15, 8, 0, 0, Math.PI*2); ctx.fill();
                 ctx.fillStyle = '#808e9b'; ctx.beginPath(); ctx.ellipse(bx, by-10, 15, 8, 0, 0, Math.PI*2); ctx.fill();
                 
-                ctx.save(); ctx.translate(bx, by-20); ctx.rotate(t.ang);
+                ctx.save(); ctx.translate(bx, by-20); ctx.rotate(t.angle);
                 if (t.type === 'basic') {
-                    ctx.fillStyle = '#1e272e'; ctx.fillRect(-10 - t.rec, -6, 26 + (t.lvl*3), 12); 
+                    ctx.fillStyle = '#1e272e'; ctx.fillRect(-10 - t.recoil, -6, 26 + (t.lvl*3), 12); 
                     ctx.fillStyle = '#f1f2f6'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill(); 
                 } else if (t.type === 'magic') {
                     let fy = Math.sin(frame * 0.12) * 3; ctx.shadowBlur = 15; ctx.shadowColor = '#00d8d6'; ctx.fillStyle = '#00d8d6'; 
                     ctx.beginPath(); ctx.moveTo(0, -16 - (t.lvl*2) + fy); ctx.lineTo(10+(t.lvl*2), 0+fy); ctx.lineTo(0, 16+(t.lvl*2)+fy); ctx.lineTo(-10-(t.lvl*2), 0+fy); ctx.fill(); ctx.shadowBlur = 0;
                 } else if (t.type === 'tesla') {
                     ctx.shadowBlur = 10; ctx.shadowColor = '#575fcf'; ctx.fillStyle = '#3c40c6'; ctx.fillRect(-8, -8, 16, 16); 
-                    ctx.fillStyle = '#fff'; ctx.fillRect(0, -4, 16 + t.rec + (t.lvl*2), 8); ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#fff'; ctx.fillRect(0, -4, 16 + t.recoil + (t.lvl*2), 8); ctx.shadowBlur = 0;
                 }
                 ctx.restore();
 
@@ -436,39 +441,39 @@
             });
         }
 
-        function drawEntities() {
-            enemies.forEach(e => {
-                if (e.fly) {
-                    let wF = Math.sin(frame * 0.5) * 8;
-                    ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(e.x, e.y+40, e.sz*1.5, e.sz*0.5, 0, 0, Math.PI*2); ctx.fill(); 
-                    ctx.fillStyle = e.c; ctx.beginPath(); ctx.arc(e.x, e.y, e.sz, 0, Math.PI*2); ctx.fill();
-                    ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x-e.sz*2, e.y-wF); ctx.lineTo(e.x-e.sz*0.5, e.y+e.sz); ctx.fill();
-                    ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x+e.sz*2, e.y-wF); ctx.lineTo(e.x+e.sz*0.5, e.y+e.sz); ctx.fill();
-                    ctx.fillStyle = '#ff4757'; ctx.fillRect(e.x - e.sz, e.y - e.sz - 8, e.sz*2, 4); ctx.fillStyle = '#2ecc71'; ctx.fillRect(e.x - e.sz, e.y - e.sz - 8, (e.sz*2) * (e.hp / e.mhp), 4);
-                    return;
-                }
+        function drawEnemyGoblins(ctx, e) {
+            if (e.isFlying) {
+                let wingFlap = Math.sin(frame * 0.5) * 10;
+                ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(e.x, e.y+40, e.size*1.5, e.size*0.5, 0, 0, Math.PI*2); ctx.fill(); 
+                ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, e.size, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x-e.size*2, e.y-wingFlap); ctx.lineTo(e.x-e.size*0.5, e.y+e.size); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x+e.size*2, e.y-wingFlap); ctx.lineTo(e.x+e.size*0.5, e.y+e.size); ctx.fill();
+                let hpW = e.size * 2; ctx.fillStyle = '#ff4757'; ctx.fillRect(e.x - hpW/2, e.y - e.size - 10, hpW, 3); ctx.fillStyle = '#2ecc71'; ctx.fillRect(e.x - hpW/2, e.y - e.size - 10, hpW * (e.hp / e.maxHp), 3);
+                return;
+            }
 
-                let w = Math.sin(frame * (e.type==='boss'?0.1:0.3)) * (e.type==='boss'?4:2); const s = e.sz; const ey = e.y - s*0.3 + w;
-                ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(e.x, e.y+s*0.8, s*1.2, s*0.5, 0, 0, Math.PI*2); ctx.fill();
-                
-                ctx.fillStyle = e.c; ctx.beginPath(); ctx.ellipse(e.x, e.y+w, s, s*1.1, 0, 0, Math.PI*2); ctx.fill();
-                if (e.type !== 'boss') { 
-                    ctx.beginPath(); ctx.moveTo(e.x-s*0.6, e.y-s*0.5+w); ctx.lineTo(e.x-s*1.5, e.y-s*0.8+w); ctx.lineTo(e.x-s*0.8, e.y+w); ctx.fill();
-                    ctx.beginPath(); ctx.moveTo(e.x+s*0.6, e.y-s*0.5+w); ctx.lineTo(e.x+s*1.5, e.y-s*0.8+w); ctx.lineTo(e.x+s*0.8, e.y+w); ctx.fill();
-                } else { 
-                    ctx.fillStyle='#f1f2f6'; ctx.beginPath(); ctx.moveTo(e.x-s*0.5, e.y-s+w); ctx.lineTo(e.x-s*0.8, e.y-s*1.5+w); ctx.lineTo(e.x-s*0.2, e.y-s*0.8+w); ctx.fill();
-                    ctx.beginPath(); ctx.moveTo(e.x+s*0.5, e.y-s+w); ctx.lineTo(e.x+s*0.8, e.y-s*1.5+w); ctx.lineTo(e.x+s*0.2, e.y-s*0.8+w); ctx.fill();
-                }
+            let wobble = Math.sin(frame * (e.type==='boss'?0.1:0.3)) * (e.type==='boss'?4:2); 
+            const s = e.size; const ey = e.y - s*0.3 + wobble;
+            ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(e.x, e.y+s*0.8, s*1.2, s*0.5, 0, 0, Math.PI*2); ctx.fill();
+            
+            ctx.fillStyle = e.color; ctx.beginPath(); ctx.ellipse(e.x, e.y+wobble, s, s*1.1, 0, 0, Math.PI*2); ctx.fill();
+            if (e.type !== 'boss') { 
+                ctx.beginPath(); ctx.moveTo(e.x-s*0.6, e.y-s*0.5+wobble); ctx.lineTo(e.x-s*1.5, e.y-s*0.8+wobble); ctx.lineTo(e.x-s*0.8, e.y+wobble); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(e.x+s*0.6, e.y-s*0.5+wobble); ctx.lineTo(e.x+s*1.5, e.y-s*0.8+wobble); ctx.lineTo(e.x+s*0.8, e.y+wobble); ctx.fill();
+            } else { 
+                ctx.fillStyle='#f1f2f6'; ctx.beginPath(); ctx.moveTo(e.x-s*0.5, e.y-s+wobble); ctx.lineTo(e.x-s*0.8, e.y-s*1.5+wobble); ctx.lineTo(e.x-s*0.2, e.y-s*0.8+wobble); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(e.x+s*0.5, e.y-s+wobble); ctx.lineTo(e.x+s*0.8, e.y-s*1.5+wobble); ctx.lineTo(e.x+s*0.2, e.y-s*0.8+wobble); ctx.fill();
+            }
 
-                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x-s*0.3, ey, s*0.25, 0, Math.PI*2); ctx.arc(e.x+s*0.3, ey, s*0.25, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = e.slw > 0 ? '#00d8d6' : '#1e272e'; ctx.beginPath(); ctx.arc(e.x-s*0.3, ey, s*0.12, 0, Math.PI*2); ctx.arc(e.x+s*0.3, ey, s*0.12, 0, Math.PI*2); ctx.fill();
-                
-                if (e.slw > 0) { ctx.strokeStyle = 'rgba(0, 216, 214, 0.6)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(e.x, e.y+w, s+4, 0, Math.PI*2); ctx.stroke(); }
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x-s*0.3, ey, s*0.25, 0, Math.PI*2); ctx.arc(e.x+s*0.3, ey, s*0.25, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = e.slowTimer > 0 ? '#00d8d6' : '#1e272e'; ctx.beginPath(); ctx.arc(e.x-s*0.3, ey, s*0.12, 0, Math.PI*2); ctx.arc(e.x+s*0.3, ey, s*0.12, 0, Math.PI*2); ctx.fill();
+            
+            if (e.slowTimer > 0) { ctx.strokeStyle = 'rgba(0, 216, 214, 0.6)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(e.x, e.y+wobble, s+4, 0, Math.PI*2); ctx.stroke(); }
 
-                ctx.fillStyle = '#ff4757'; ctx.fillRect(e.x - s*1.2, e.y - s - 12 + w, s*2.4, 4); ctx.fillStyle = '#2ecc71'; ctx.fillRect(e.x - s*1.2, e.y - s - 12 + w, (s*2.4) * (e.hp / e.mhp), 4);
-            });
+            ctx.fillStyle = '#ff4757'; ctx.fillRect(e.x - s*1.2, e.y - s - 12 + w, s*2.4, 4); ctx.fillStyle = '#2ecc71'; ctx.fillRect(e.x - s*1.2, e.y - s - 12 + w, (s*2.4) * (e.hp / e.mhp), 4);
         }
 
+        // ГЛАВНЫЙ ЦИКЛ ОТРИСОВКИ
         function draw() {
             ctx.save(); ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake);
 
@@ -476,7 +481,7 @@
             ctx.fillStyle = '#20bf6b'; ctx.fillRect(0, 0, W, canvas.height);
             ctx.fillStyle = '#1e9b54'; for(let i=0; i<W; i+=25) for(let j=UI_TOP; j<UI_BOT; j+=25) if((i+j)%50===0) { ctx.beginPath(); ctx.arc(i,j,2,0,Math.PI); ctx.fill(); }
             
-            marks.forEach(s => { ctx.fillStyle = s.bl ? `rgba(142, 68, 173, ${s.life/400})` : `rgba(30, 39, 46, ${s.life/1000})`; ctx.beginPath(); ctx.ellipse(s.x, s.y, s.sz, s.sz*0.6, 0, 0, Math.PI*2); ctx.fill(); });
+            marks.forEach(s => { ctx.fillStyle = s.bl ? `rgba(142, 68, 173, ${s.life/400})` : `rgba(30, 39, 46, ${s.life/1000})`; ctx.beginPath(); ctx.ellipse(s.x, s.y, s.size, s.size*0.6, 0, 0, Math.PI*2); ctx.fill(); });
 
             if(waypoints.length > 0) {
                 ctx.strokeStyle = '#d1ccc0'; ctx.lineWidth = pathW + 12; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; 
@@ -510,18 +515,16 @@
                 let grad=ctx.createLinearGradient(0,bW.y-60,0,bW.y); grad.addColorStop(0,'#718093'); grad.addColorStop(1,'#2f3640'); ctx.fillStyle=grad; ctx.fillRect(bW.x-55,bW.y-60,110,70); 
                 ctx.fillStyle = '#1e272e'; ctx.fillRect(bW.x-65, bW.y-80, 30, 40); ctx.fillRect(bW.x+35, bW.y-80, 30, 40);
                 ctx.fillStyle = '#ee5253'; ctx.beginPath(); ctx.moveTo(bW.x-70, bW.y-80); ctx.lineTo(bW.x-50, bW.y-120); ctx.lineTo(bW.x-30, bW.y-80); ctx.fill(); ctx.beginPath(); ctx.moveTo(bW.x+30, bW.y-80); ctx.lineTo(bW.x+50, bW.y-120); ctx.lineTo(bW.x+70, bW.y-80); ctx.fill();
-                ctx.fillStyle='#dcdde1'; ctx.fillRect(bW.x-15,bW.y-20,30,30); ctx.fillStyle='#1e272e'; ctx.beginPath(); ctx.arc(bW.x,bW.y-20,15,Math.PI,0); ctx.fill(); 
             }
 
             drawTowers();
-            
             enemies.filter(e => !e.fly).forEach(e => drawEnemyGoblins(ctx, e));
 
             shockwaves.forEach(sw => { ctx.strokeStyle = `rgba(255, 255, 255, ${sw.life})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(sw.x, sw.y, sw.r, sw.r*0.6, 0, 0, Math.PI*2); ctx.stroke(); });
 
             lightnings.forEach(l => {
                 ctx.shadowBlur = 15; ctx.shadowColor = '#575fcf'; ctx.strokeStyle = `rgba(95, 39, 205, ${l.life})`; ctx.lineWidth = 4;
-                ctx.beginPath(); ctx.moveTo(l.s.x, l.s.y); let midX = (l.s.x + l.e.x)/2 + (Math.random()-0.5)*20; let midY = (l.s.y + l.e.y)/2 + (Math.random()-0.5)*20; ctx.lineTo(midX, midY); ctx.lineTo(l.e.x, l.e.y); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(l.start.x, l.start.y); let midX = (l.start.x + l.end.x)/2 + (Math.random()-0.5)*20; let midY = (l.start.y + l.end.y)/2 + (Math.random()-0.5)*20; ctx.lineTo(midX, midY); ctx.lineTo(l.end.x, l.end.y); ctx.stroke();
                 ctx.shadowBlur = 0; ctx.strokeStyle = `rgba(255, 255, 255, ${l.life})`; ctx.lineWidth = 2; ctx.stroke();
             });
 
@@ -533,7 +536,7 @@
             enemies.filter(e => e.fly).forEach(e => drawEnemyGoblins(ctx, e));
 
             particles.forEach(p => { ctx.fillStyle = p.col; ctx.globalAlpha = Math.max(0, p.life); ctx.beginPath(); ctx.arc(p.x, p.y, p.sz, 0, Math.PI * 2); ctx.fill(); }); ctx.globalAlpha = 1.0;
-            floatTexts.forEach(ft => { ctx.fillStyle = ft.col; ctx.globalAlpha = Math.max(0, ft.life); ctx.font = `${ft.sz}px Montserrat`; ctx.textAlign = 'center'; ctx.shadowBlur = 4; ctx.shadowColor = '#000'; ctx.fillText(ft.txt, ft.x, ft.y); ctx.shadowBlur = 0; }); ctx.globalAlpha = 1.0;
+            floatTexts.forEach(ft => { ctx.fillStyle = ft.col; ctx.globalAlpha = Math.max(0, ft.life); ctx.font = `${ft.isCrit?'900':'bold'} ${ft.sz}px Montserrat`; ctx.textAlign = 'center'; ctx.shadowBlur = 4; ctx.shadowColor = '#000'; ctx.fillText(ft.txt, ft.x, ft.y); ctx.shadowBlur = 0; }); ctx.globalAlpha = 1.0;
 
             ctx.restore(); 
 
@@ -543,7 +546,7 @@
                 ctx.fillText("ТАПНИ В ТОЛПУ ВРАГОВ", W/2, UI_TOP + PLAY_H/2); ctx.shadowBlur = 0;
             }
 
-            update(); requestAnimationFrame(draw);
+            update(); requestAnimationFrame(draw); // ВОТ ТУТ ЦИКЛ ЗАПУСКАЕТСЯ ВЕЧНО!
         }
 
         window.addEventListener('touchstart', (e) => {
@@ -567,7 +570,7 @@
                     closeTowerMenu(); let cost = selectedAction === 'tesla' ? 200 : (selectedAction === 'magic' ? 120 : 50);
                     if (gold >= cost) {
                         gold -= cost; updateUI(); clickedPlot.occ = true;
-                        let tData = { x: clickedPlot.x, y: clickedPlot.y, ang: 0, rec: 0, cd: 0, type: selectedAction, lvl: 1, bc: cost, cost: cost };
+                        let tData = { x: clickedPlot.x, y: clickedPlot.y, angle: 0, recoil: 0, cooldown: 0, type: selectedAction, level: 1, baseCost: cost, totalCost: cost };
                         if (selectedAction === 'basic') { tData.rng = 130; tData.fr = 35; tData.dmg = 20; }
                         else if (selectedAction === 'magic') { tData.rng = 110; tData.fr = 90; tData.dmg = 45; }
                         else { tData.rng = 95; tData.fr = 80; tData.dmg = 30; } 
@@ -579,6 +582,7 @@
             } else { closeTowerMenu(); }
         }, { passive: false });
 
+        requestAnimationFrame(draw); tg.ready();
     </script>
 </body>
 </html>
