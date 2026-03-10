@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Elite Quiz</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #0a0a12; color: white; font-family: 'Montserrat', sans-serif; overflow: hidden; touch-action: none; user-select: none; }
+        
+        /* ВЕРХНЯЯ ПАНЕЛЬ */
+        #topUI {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 15px 20px; background: rgba(21, 21, 34, 0.9);
+            border-bottom: 2px solid #11998e; box-shadow: 0 4px 15px rgba(17, 153, 142, 0.2);
+            position: absolute; top: 0; left: 0; width: 100%; box-sizing: border-box; z-index: 10;
+        }
+        
+        .btn-back { background: #151522; color: #fff; border: 1px solid #38ef7d; padding: 8px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        .stats { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+        .score-box { display: flex; gap: 15px; font-weight: 900; }
+        .score { color: #38ef7d; font-size: 16px; }
+        .coins { color: #ffcc00; font-size: 16px; }
+        .lives { font-size: 14px; letter-spacing: 2px; }
+
+        /* ИГРОВОЕ ПОЛЕ */
+        #gameContainer {
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            height: 100vh; padding: 80px 20px 20px; box-sizing: border-box;
+            background: radial-gradient(circle at center, #151522 0%, #0a0a12 100%);
+        }
+
+        /* КАРТОЧКА ВОПРОСА */
+        .question-card {
+            background: #151522; border: 2px solid rgba(56, 239, 125, 0.3);
+            border-radius: 16px; padding: 25px 20px; width: 100%; max-width: 400px;
+            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            position: relative; overflow: hidden; margin-bottom: 20px;
+        }
+        .question-text { font-size: 18px; font-weight: 700; line-height: 1.5; color: #fff; min-height: 80px; display: flex; align-items: center; justify-content: center; }
+        
+        /* ТАЙМЕР */
+        .timer-bar-container { width: 100%; height: 6px; background: #333; position: absolute; bottom: 0; left: 0; }
+        .timer-bar { height: 100%; background: linear-gradient(90deg, #11998e, #38ef7d); width: 100%; transition: width 1s linear, background-color 0.3s; }
+        .timer-urgent { background: #ff4757 !important; }
+
+        /* КНОПКИ ОТВЕТОВ */
+        .answers-grid { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 400px; }
+        .answer-btn {
+            background: rgba(255, 255, 255, 0.05); border: 2px solid rgba(255,255,255,0.1);
+            color: #fff; font-size: 15px; font-weight: 700; padding: 16px; border-radius: 12px;
+            cursor: pointer; transition: 0.2s; text-align: left;
+        }
+        .answer-btn:active { transform: scale(0.98); background: rgba(255, 255, 255, 0.1); }
+        .answer-btn.correct { background: #11998e; border-color: #38ef7d; box-shadow: 0 0 15px rgba(56, 239, 125, 0.4); }
+        .answer-btn.wrong { background: #ff4757; border-color: #ff6b81; box-shadow: 0 0 15px rgba(255, 71, 87, 0.4); }
+        .answer-btn:disabled { cursor: default; opacity: 0.9; }
+
+        /* ОВЕРЛЕЙ КОНЦА ИГРЫ */
+        #gameOverOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 10, 18, 0.98); z-index: 100;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+        }
+        h1 { font-size: 38px; color: #38ef7d; margin-bottom: 5px; text-transform: uppercase; text-shadow: 0 0 20px rgba(56,239,125,0.4); text-align: center; }
+        .result-subtitle { font-size: 16px; color: #888899; margin-bottom: 30px; }
+        .result-stats { background: #151522; padding: 20px 40px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 30px; text-align: center; }
+        .result-text { font-size: 20px; font-weight: bold; margin: 10px 0; }
+        .restart-btn { background: linear-gradient(90deg, #11998e, #38ef7d); color: #000; font-size: 18px; font-weight: 900; padding: 15px 40px; border: none; border-radius: 12px; cursor: pointer; box-shadow: 0 6px 0 #0f7a71; text-transform: uppercase; }
+        .restart-btn:active { transform: translateY(6px); box-shadow: 0 0 0 #0f7a71; }
+    </style>
+</head>
+<body>
+
+    <div id="topUI">
+        <button class="btn-back" onclick="window.location.href='../index.html'">◀ ХАБ</button>
+        <div class="stats">
+            <div class="lives" id="livesUi">❤️❤️❤️</div>
+            <div class="score-box">
+                <div class="score"><span id="scoreVal">0</span> 🏆</div>
+                <div class="coins">+<span id="coinsVal">0</span> 🪙</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="gameContainer">
+        <div class="question-card">
+            <div class="question-text" id="questionText">Загрузка вопроса...</div>
+            <div class="timer-bar-container"><div class="timer-bar" id="timerBar"></div></div>
+        </div>
+        <div class="answers-grid" id="answersGrid">
+            </div>
+    </div>
+
+    <div id="gameOverOverlay">
+        <h1 id="goTitle">ИГРА ОКОНЧЕНА</h1>
+        <div class="result-subtitle" id="goSubtitle">IQ тест завершен</div>
+        <div class="result-stats">
+            <div class="result-text">Очки: <span id="finalScore" style="color:#38ef7d">0</span></div>
+            <div class="result-text">Монеты: <span id="finalCoins" style="color:#ffcc00">0</span></div>
+            <div class="result-text" style="font-size:14px; color:#888; margin-top:15px;">Отвечено верно: <span id="correctCount">0</span></div>
+        </div>
+        <button class="restart-btn" onclick="initGame()">ИГРАТЬ СНОВА</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand(); tg.disableVerticalSwipes && tg.disableVerticalSwipes();
+        tg.setHeaderColor('#0a0a12');
+
+        const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Smart", username: "Brain" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+        let nickname = user.username || user.first_name || "Игрок";
+
+        // БАЗА ВОПРОСОВ (Можно расширять)
+        const questionPool = [
+            { q: "Какой химический элемент назван в честь злого подземного духа?", a: ["Кобальт", "Никель", "Свинец", "Вольфрам"], c: 0 },
+            { q: "Как называется самая яркая звезда в созвездии Большого Пса?", a: ["Сириус", "Вега", "Полярная", "Бетельгейзе"], c: 0 },
+            { q: "Кто является автором антиутопии «1984»?", a: ["Джордж Оруэлл", "Олдос Хаксли", "Рэй Брэдбери", "Евгений Замятин"], c: 0 },
+            { q: "Какой газ преобладает в атмосфере Земли?", a: ["Азот", "Кислород", "Углекислый газ", "Аргон"], c: 0 },
+            { q: "В какой стране находится древний город Мачу-Пикчу?", a: ["Перу", "Мексика", "Бразилия", "Чили"], c: 0 },
+            { q: "Какая планета Солнечной системы самая горячая?", a: ["Венера", "Меркурий", "Марс", "Юпитер"], c: 0 },
+            { q: "Как называется спутник Плутона, который всего вдвое меньше самой планеты?", a: ["Харон", "Фобос", "Титан", "Европа"], c: 0 },
+            { q: "Какой океан самый большой по площади?", a: ["Тихий", "Атлантический", "Индийский", "Северный Ледовитый"], c: 0 },
+            { q: "Кто написал картину «Крик»?", a: ["Эдвард Мунк", "Винсент Ван Гог", "Пабло Пикассо", "Сальвадор Дали"], c: 0 },
+            { q: "Как называется боязнь замкнутого пространства?", a: ["Клаустрофобия", "Агорафобия", "Арахнофобия", "Акрофобия"], c: 0 },
+            { q: "Какое вещество является самым твердым в природе?", a: ["Алмаз", "Графен", "Титан", "Вольфрам"], c: 0 },
+            { q: "Какая кость самая длинная в теле человека?", a: ["Бедренная", "Берцовая", "Плечевая", "Локтевая"], c: 0 }
+        ];
+
+        let questions = [];
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let coins = 0;
+        let correctAnswersCount = 0;
+        let lives = 3;
+        
+        const TIME_LIMIT = 15; // 15 секунд на вопрос
+        let timeLeft = TIME_LIMIT;
+        let timerInterval;
+        let isAnswering = false;
+
+        // Перемешивание массива (Фишер-Йетс)
+        function shuffleArray(array) {
+            let curId = array.length;
+            while (0 !== curId) {
+                let randId = Math.floor(Math.random() * curId);
+                curId -= 1;
+                let tmp = array[curId];
+                array[curId] = array[randId];
+                array[randId] = tmp;
+            }
+            return array;
+        }
+
+        function updateUI() {
+            document.getElementById('scoreVal').innerText = score;
+            document.getElementById('coinsVal').innerText = coins;
+            document.getElementById('livesUi').innerText = '❤️'.repeat(lives) + '💔'.repeat(3 - lives);
+        }
+
+        function initGame() {
+            document.getElementById('gameOverOverlay').style.display = 'none';
+            score = 0; coins = 0; lives = 3; correctAnswersCount = 0; currentQuestionIndex = 0;
+            updateUI();
+            
+            // Клонируем и мешаем вопросы
+            questions = JSON.parse(JSON.stringify(questionPool));
+            shuffleArray(questions);
+            
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            if (lives <= 0 || currentQuestionIndex >= questions.length) {
+                endGame(); return;
+            }
+
+            isAnswering = false;
+            let qData = questions[currentQuestionIndex];
+            document.getElementById('questionText').innerText = qData.q;
+
+            // Подготовка вариантов ответов
+            let options = qData.a.map((text, index) => { return { text: text, isCorrect: index === qData.c }; });
+            shuffleArray(options);
+
+            let grid = document.getElementById('answersGrid');
+            grid.innerHTML = '';
+
+            options.forEach(opt => {
+                let btn = document.createElement('button');
+                btn.className = 'answer-btn';
+                btn.innerText = opt.text;
+                btn.onclick = () => handleAnswer(btn, opt.isCorrect);
+                grid.appendChild(btn);
+            });
+
+            startTimer();
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            timeLeft = TIME_LIMIT;
+            let bar = document.getElementById('timerBar');
+            bar.style.width = '100%';
+            bar.classList.remove('timer-urgent');
+
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                let percent = (timeLeft / TIME_LIMIT) * 100;
+                bar.style.width = `${percent}%`;
+                
+                if(timeLeft <= 5) bar.classList.add('timer-urgent');
+
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    handleTimeOut();
+                }
+            }, 1000);
+        }
+
+        function handleAnswer(btn, isCorrect) {
+            if (isAnswering) return;
+            isAnswering = true;
+            clearInterval(timerInterval);
+
+            // Блокируем все кнопки
+            const buttons = document.querySelectorAll('.answer-btn');
+            buttons.forEach(b => b.disabled = true);
+
+            if (isCorrect) {
+                btn.classList.add('correct');
+                let timeBonus = Math.floor(timeLeft * 10); // Чем быстрее, тем больше очков
+                score += (100 + timeBonus);
+                coins += 1; // 1 монета за правильный ответ
+                correctAnswersCount++;
+            } else {
+                btn.classList.add('wrong');
+                lives--;
+                // Подсвечиваем правильный
+                buttons.forEach(b => {
+                    let optText = questions[currentQuestionIndex].a[questions[currentQuestionIndex].c];
+                    if (b.innerText === optText) b.classList.add('correct');
+                });
+            }
+
+            updateUI();
+
+            setTimeout(() => {
+                currentQuestionIndex++;
+                loadQuestion();
+            }, 1500); // Пауза перед следующим вопросом
+        }
+
+        function handleTimeOut() {
+            if (isAnswering) return;
+            isAnswering = true;
+            lives--;
+            updateUI();
+
+            const buttons = document.querySelectorAll('.answer-btn');
+            buttons.forEach(b => {
+                b.disabled = true;
+                let optText = questions[currentQuestionIndex].a[questions[currentQuestionIndex].c];
+                if (b.innerText === optText) b.classList.add('correct');
+            });
+
+            setTimeout(() => {
+                currentQuestionIndex++;
+                loadQuestion();
+            }, 1500);
+        }
+
+        async function endGame() {
+            clearInterval(timerInterval);
+            document.getElementById('gameOverOverlay').style.display = 'flex';
+            
+            document.getElementById('goTitle').innerText = lives > 0 ? "ПОБЕДА!" : "ИГРА ОКОНЧЕНА";
+            document.getElementById('goTitle').style.color = lives > 0 ? "#ffcc00" : "#ff4757";
+            document.getElementById('goSubtitle').innerText = lives > 0 ? "Вы ответили на все вопросы!" : "Закончились попытки";
+            
+            document.getElementById('finalScore').innerText = score;
+            document.getElementById('finalCoins').innerText = coins;
+            document.getElementById('correctCount').innerText = `${correctAnswersCount} / ${questions.length}`;
+
+            // Отправка результата на бэкенд
+            try {
+                await fetch(`${BACKEND_URL}/save_score`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: user.id, username: nickname, score: score, coins: coins, game: 'quiz' })
+                });
+            } catch(e) { console.error("Ошибка сохранения:", e); }
+        }
+
+        // Старт при загрузке
+        initGame();
+
+    </script>
+</body>
+</html>
