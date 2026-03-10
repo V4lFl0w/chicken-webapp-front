@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Tetris</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #0a0a12; color: white; font-family: 'Montserrat', sans-serif; overflow: hidden; touch-action: none; user-select: none; }
+        
+        #topUI {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 15px 20px; background: rgba(21, 21, 34, 0.9);
+            border-bottom: 2px solid #00ffcc; box-shadow: 0 4px 15px rgba(0, 255, 204, 0.2);
+            position: absolute; top: 0; left: 0; width: 100%; box-sizing: border-box; z-index: 10;
+        }
+        
+        .btn-back { background: #333; color: #fff; border: 1px solid #555; padding: 8px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .stats { text-align: right; }
+        .score { font-size: 20px; font-weight: 900; color: #00ffcc; }
+        .coins { font-size: 14px; color: #ffcc00; }
+
+        /* Игровое поле */
+        #game-container {
+            display: flex; justify-content: center; align-items: center;
+            height: calc(100vh - 200px); margin-top: 70px;
+        }
+        canvas { background: #111; border: 2px solid #333; border-radius: 5px; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+
+        /* Мобильное управление */
+        #controls {
+            position: absolute; bottom: 20px; left: 0; width: 100%;
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+            padding: 0 15px; box-sizing: border-box;
+        }
+        .ctrl-btn {
+            background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px; height: 60px; display: flex; justify-content: center; align-items: center;
+            font-size: 24px; color: #00ffcc; cursor: pointer; transition: 0.1s;
+        }
+        .ctrl-btn:active { background: rgba(0, 255, 204, 0.3); transform: scale(0.95); }
+
+        /* Оверлей конца игры */
+        #gameOverOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 10, 18, 0.95); z-index: 100;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+        }
+        h1 { font-size: 40px; color: #ff3366; margin-bottom: 10px; text-transform: uppercase; }
+        .result-text { font-size: 20px; margin-bottom: 30px; color: #fff; text-align: center; }
+        .restart-btn { background: #00ffcc; color: #000; font-size: 20px; font-weight: bold; padding: 15px 40px; border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 0 15px rgba(0,255,204,0.5); }
+    </style>
+</head>
+<body>
+
+    <div id="topUI">
+        <button class="btn-back" onclick="window.location.href='../index.html'">◀ ХАБ</button>
+        <div class="stats">
+            <div class="score">ОЧКИ: <span id="scoreVal">0</span></div>
+            <div class="coins">+<span id="coinsVal">0</span> 🪙</div>
+        </div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="tetris"></canvas>
+    </div>
+
+    <div id="controls">
+        <div class="ctrl-btn" id="btn-left">⬅️</div>
+        <div class="ctrl-btn" id="btn-rotate">🔄</div>
+        <div class="ctrl-btn" id="btn-down">⬇️</div>
+        <div class="ctrl-btn" id="btn-right">➡️</div>
+    </div>
+
+    <div id="gameOverOverlay">
+        <h1>ИГРА ОКОНЧЕНА</h1>
+        <div class="result-text">Очки: <span id="finalScore" style="color:#00ffcc">0</span><br>Заработано: <span id="finalCoins" style="color:#ffcc00">0</span> 🪙</div>
+        <button class="restart-btn" onclick="resetGame()">ИГРАТЬ СНОВА</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand(); tg.disableVerticalSwipes && tg.disableVerticalSwipes();
+        tg.setHeaderColor('#0a0a12');
+
+        const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Hero", username: "Player" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+        let nickname = user.username || user.first_name || "Игрок";
+
+        // Настройка Canvas
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+        const grid = 30; // Размер блока
+        canvas.width = 10 * grid;  // 10 колонок
+        canvas.height = 20 * grid; // 20 строк
+
+        let animationFrameId;
+        let score = 0;
+        let earnedCoins = 0;
+        let gameOver = false;
+
+        // Фигуры Тетриса и их цвета
+        const tetrominos = {
+            'I': [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]],
+            'J': [[1,0,0], [1,1,1], [0,0,0]],
+            'L': [[0,0,1], [1,1,1], [0,0,0]],
+            'O': [[1,1], [1,1]],
+            'S': [[0,1,1], [1,1,0], [0,0,0]],
+            'Z': [[1,1,0], [0,1,1], [0,0,0]],
+            'T': [[0,1,0], [1,1,1], [0,0,0]]
+        };
+        const colors = {
+            'I': '#00ffff', 'O': '#ffff00', 'T': '#800080',
+            'S': '#00ff00', 'Z': '#ff0000', 'J': '#0000ff', 'L': '#ffa500'
+        };
+
+        let playfield = [];
+        for (let row = -2; row < 20; row++) {
+            playfield[row] = [];
+            for (let col = 0; col < 10; col++) { playfield[row][col] = 0; }
+        }
+
+        let tetrominoSequence = [];
+        let tetromino = getNextTetromino();
+        let count = 0;
+
+        // Генератор случайных фигур
+        function generateSequence() {
+            const sequence = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
+            while (sequence.length) {
+                const rand = Math.floor(Math.random() * sequence.length);
+                const name = sequence.splice(rand, 1)[0];
+                tetrominoSequence.push(name);
+            }
+        }
+
+        function getNextTetromino() {
+            if (tetrominoSequence.length === 0) generateSequence();
+            const name = tetrominoSequence.pop();
+            const matrix = tetrominos[name];
+            const col = playfield[0].length / 2 - Math.ceil(matrix[0].length / 2);
+            const row = name === 'I' ? -1 : -2;
+            return { name: name, matrix: matrix, row: row, col: col };
+        }
+
+        function rotate(matrix) {
+            const N = matrix.length - 1;
+            const result = matrix.map((row, i) => row.map((val, j) => matrix[N - j][i]));
+            return result;
+        }
+
+        function isValidMove(matrix, cellRow, cellCol) {
+            for (let r = 0; r < matrix.length; r++) {
+                for (let c = 0; c < matrix[r].length; c++) {
+                    if (matrix[r][c] && (
+                        cellCol + c < 0 || 
+                        cellCol + c >= playfield[0].length || 
+                        cellRow + r >= playfield.length ||
+                        playfield[cellRow + r][cellCol + c])
+                    ) { return false; }
+                }
+            }
+            return true;
+        }
+
+        function placeTetromino() {
+            for (let r = 0; r < tetromino.matrix.length; r++) {
+                for (let c = 0; c < tetromino.matrix[r].length; c++) {
+                    if (tetromino.matrix[r][c]) {
+                        if (tetromino.row + r < 0) { return showGameOver(); }
+                        playfield[tetromino.row + r][tetromino.col + c] = tetromino.name;
+                    }
+                }
+            }
+
+            // Проверка собранных линий
+            let linesCleared = 0;
+            for (let row = playfield.length - 1; row >= 0; ) {
+                if (playfield[row].every(cell => !!cell)) {
+                    for (let r = row; r >= 0; r--) {
+                        for (let c = 0; c < playfield[r].length; c++) {
+                            playfield[r][c] = playfield[r-1] ? playfield[r-1][c] : 0;
+                        }
+                    }
+                    linesCleared++;
+                } else { row--; }
+            }
+
+            if (linesCleared > 0) {
+                const points = linesCleared === 1 ? 100 : linesCleared === 2 ? 300 : linesCleared === 3 ? 500 : 800;
+                score += points;
+                earnedCoins += linesCleared * 2; // За каждую линию даем 2 монеты
+                document.getElementById('scoreVal').innerText = score;
+                document.getElementById('coinsVal').innerText = earnedCoins;
+            }
+
+            tetromino = getNextTetromino();
+        }
+
+        // Игровой цикл
+        function loop() {
+            animationFrameId = requestAnimationFrame(loop);
+            context.clearRect(0,0,canvas.width,canvas.height);
+
+            // Отрисовка поля
+            for (let row = 0; row < 20; row++) {
+                for (let col = 0; col < 10; col++) {
+                    if (playfield[row][col]) {
+                        const name = playfield[row][col];
+                        context.fillStyle = colors[name];
+                        context.fillRect(col * grid, row * grid, grid-1, grid-1);
+                    }
+                }
+            }
+
+            // Отрисовка активной фигуры
+            if (tetromino) {
+                if (++count > 35) { // Скорость падения (чем меньше, тем быстрее)
+                    tetromino.row++;
+                    count = 0;
+                    if (!isValidMove(tetromino.matrix, tetromino.row, tetromino.col)) {
+                        tetromino.row--;
+                        placeTetromino();
+                    }
+                }
+
+                context.fillStyle = colors[tetromino.name];
+                context.shadowBlur = 10;
+                context.shadowColor = colors[tetromino.name];
+                for (let r = 0; r < tetromino.matrix.length; r++) {
+                    for (let c = 0; c < tetromino.matrix[r].length; c++) {
+                        if (tetromino.matrix[r][c]) {
+                            context.fillRect((tetromino.col + c) * grid, (tetromino.row + r) * grid, grid-1, grid-1);
+                        }
+                    }
+                }
+                context.shadowBlur = 0;
+            }
+        }
+
+        // Управление с клавиатуры (для ПК тестов)
+        document.addEventListener('keydown', function(e) {
+            if (gameOver) return;
+            if (e.key === 'ArrowLeft' || e.key === 'a') moveLeft();
+            if (e.key === 'ArrowRight' || e.key === 'd') moveRight();
+            if (e.key === 'ArrowUp' || e.key === 'w') rotatePiece();
+            if (e.key === 'ArrowDown' || e.key === 's') dropPiece();
+        });
+
+        // Мобильное управление (Кнопки)
+        function moveLeft() { if(isValidMove(tetromino.matrix, tetromino.row, tetromino.col - 1)) tetromino.col--; }
+        function moveRight() { if(isValidMove(tetromino.matrix, tetromino.row, tetromino.col + 1)) tetromino.col++; }
+        function rotatePiece() { const m = rotate(tetromino.matrix); if(isValidMove(m, tetromino.row, tetromino.col)) tetromino.matrix = m; }
+        function dropPiece() {
+            const row = tetromino.row + 1;
+            if (!isValidMove(tetromino.matrix, row, tetromino.col)) {
+                tetromino.row = row - 1; placeTetromino(); return;
+            }
+            tetromino.row = row;
+        }
+
+        document.getElementById('btn-left').addEventListener('touchstart', (e)=>{e.preventDefault(); moveLeft();});
+        document.getElementById('btn-right').addEventListener('touchstart', (e)=>{e.preventDefault(); moveRight();});
+        document.getElementById('btn-rotate').addEventListener('touchstart', (e)=>{e.preventDefault(); rotatePiece();});
+        
+        // Ускоренное падение при зажатии кнопки "Вниз"
+        let dropInterval;
+        document.getElementById('btn-down').addEventListener('touchstart', (e)=>{
+            e.preventDefault(); dropPiece();
+            dropInterval = setInterval(dropPiece, 50);
+        });
+        document.getElementById('btn-down').addEventListener('touchend', (e)=>{
+            e.preventDefault(); clearInterval(dropInterval);
+        });
+
+        async function showGameOver() {
+            gameOver = true;
+            cancelAnimationFrame(animationFrameId);
+            document.getElementById('gameOverOverlay').style.display = 'flex';
+            document.getElementById('finalScore').innerText = score;
+            document.getElementById('finalCoins').innerText = earnedCoins;
+
+            // Отправка результата на твой бекенд
+            try {
+                await fetch(`${BACKEND_URL}/save_score`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: user.id, username: nickname, score: score, coins: earnedCoins, game: 'tetris' })
+                });
+            } catch(e) { console.error("Ошибка сохранения:", e); }
+        }
+
+        window.resetGame = function() {
+            for (let row = -2; row < 20; row++) {
+                for (let col = 0; col < 10; col++) { playfield[row][col] = 0; }
+            }
+            score = 0; earnedCoins = 0;
+            document.getElementById('scoreVal').innerText = score;
+            document.getElementById('coinsVal').innerText = earnedCoins;
+            document.getElementById('gameOverOverlay').style.display = 'none';
+            tetromino = getNextTetromino();
+            gameOver = false;
+            requestAnimationFrame(loop);
+        }
+
+        // Запуск игры
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+</html>
