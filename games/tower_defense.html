@@ -3,706 +3,472 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tower Defense - Action</title>
+    <title>Tower Defense - AAA Edition</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; padding: 0; background-color: #1e272e; overflow: hidden; touch-action: none; font-family: 'Montserrat', Arial, sans-serif; user-select: none; color: white; }
-        canvas { display: block; }
+        body { margin: 0; padding: 0; background-color: #1e272e; overflow: hidden; touch-action: none; font-family: 'Montserrat', sans-serif; user-select: none; color: white; }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        #topUI {
-            position: absolute; top: 0; left: 0; width: 100%;
-            background: rgba(30, 39, 46, 0.9); padding: 10px 15px;
+        /* ВЕРХНЯЯ ПАНЕЛЬ (СТРОГАЯ ФИКСАЦИЯ) */
+        #topBar {
+            position: absolute; top: 0; left: 0; width: 100%; height: 60px;
+            background: linear-gradient(180deg, #1e272e 0%, rgba(30, 39, 46, 0.8) 100%);
             display: flex; justify-content: space-between; align-items: center;
-            box-sizing: border-box; z-index: 100; border-bottom: 2px solid #bdc3c7;
+            padding: 0 15px; box-sizing: border-box; z-index: 100;
+            border-bottom: 2px solid #f1c40f; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
         }
-
         #backBtn {
-            background: linear-gradient(to bottom, #f1c40f, #e67e22); color: #2c3e50;
-            border: 2px solid #fff; border-radius: 8px;
-            padding: 6px 12px; font-weight: 900; font-size: 12px;
-            cursor: pointer; box-shadow: 0 3px 0 #d35400; text-transform: uppercase;
+            background: linear-gradient(to bottom, #ff9f43, #ee5253); color: #fff;
+            border: 2px solid #ff9f43; border-radius: 8px;
+            padding: 8px 12px; font-weight: 900; font-size: 12px;
+            cursor: pointer; box-shadow: 0 4px 0 #833471; text-transform: uppercase;
         }
-        #backBtn:active { transform: translateY(3px); box-shadow: 0 0 0 #d35400; }
-
-        #speedBtn {
-            background: linear-gradient(to bottom, #0fb9b1, #38ada9); color: #fff;
-            border: 2px solid #fff; border-radius: 8px;
-            padding: 6px 12px; font-weight: 900; font-size: 14px;
-            cursor: pointer; box-shadow: 0 3px 0 #079992;
-        }
-        #speedBtn:active { transform: translateY(3px); box-shadow: 0 0 0 #079992; }
-
-        /* ГОРИЗОНТАЛЬНАЯ ПАНЕЛЬ СТРОИТЕЛЬСТВА ВНИЗУ */
-        #bottomUI {
-            position: absolute; bottom: 0; left: 0; width: 100%;
-            background: rgba(15, 20, 23, 0.95); 
-            padding: 15px 10px 25px 10px; box-sizing: border-box;
-            display: flex; justify-content: space-around; align-items: flex-end;
-            border-top: 2px solid #f1c40f; z-index: 50; box-shadow: 0 -10px 20px rgba(0,0,0,0.5);
-        }
-        .build-btn {
-            background: linear-gradient(to bottom, #485460, #1e272e);
-            border: 2px solid #808e9b; border-radius: 12px;
-            padding: 8px; color: white; font-weight: bold; text-align: center;
-            font-size: 10px; cursor: pointer; transition: 0.2s;
-            display: flex; flex-direction: column; align-items: center; gap: 4px;
-            box-shadow: 0 4px 0 #0f1417; width: 65px;
-        }
-        .build-btn.active { 
-            border-color: #00d8d6; background: linear-gradient(to bottom, #3c40c6, #1e272e); 
-            transform: translateY(-8px); box-shadow: 0 6px 0 #0f1417, 0 0 15px rgba(0, 216, 214, 0.4); 
-        }
-        .build-btn.meteor-btn.active {
-            border-color: #e84118; background: linear-gradient(to bottom, #c23616, #1e272e);
-            box-shadow: 0 6px 0 #0f1417, 0 0 20px rgba(232, 65, 24, 0.6); 
-        }
-        .build-btn span { color: #f1c40f; font-size: 14px; font-weight: 900; margin-top: 2px;}
+        #backBtn:active { transform: translateY(4px); box-shadow: 0 0 0 #833471; }
         
-        .tower-icon { width: 30px; height: 30px; position: relative; }
-        .icon-cannon::before { content: ''; position: absolute; bottom: 2px; left: 5px; width: 20px; height: 12px; background: #808e9b; border-radius: 4px; border: 2px solid #fff; }
-        .icon-cannon::after { content: ''; position: absolute; top: 4px; left: 12px; width: 16px; height: 8px; background: #1e272e; transform: rotate(-30deg); }
-        .icon-magic::before { content: ''; position: absolute; bottom: 2px; left: 5px; width: 20px; height: 12px; background: #485460; border-radius: 4px; border: 2px solid #fff; }
-        .icon-magic::after { content: ''; position: absolute; top: -2px; left: 10px; width: 10px; height: 16px; background: #0fb9b1; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
-        .icon-tesla::before { content: ''; position: absolute; bottom: 2px; left: 5px; width: 20px; height: 12px; background: #3c40c6; border-radius: 4px; border: 2px solid #fff; }
-        .icon-tesla::after { content: ''; position: absolute; top: 0px; left: 13px; width: 4px; height: 15px; background: #fff; }
-        .icon-meteor::after { content: '☄️'; position: absolute; top: 0px; left: 2px; font-size: 24px;}
+        .stats-container { display: flex; gap: 15px; align-items: center; font-size: 16px; font-weight: 900; text-shadow: 0 2px 4px #000; }
+        .stat-gold { color: #f1c40f; } .stat-lives { color: #ff6b6b; } .stat-wave { color: #00d2d3; }
 
-        /* УМНОЕ ВСПЛЫВАЮЩЕЕ МЕНЮ */
-        #towerMenu {
-            position: absolute; display: none; flex-direction: column; gap: 8px;
-            background: rgba(30, 39, 46, 0.95); padding: 10px; border-radius: 12px;
-            border: 2px solid #f1c40f; z-index: 150; 
-            box-shadow: 0 10px 20px rgba(0,0,0,0.8); backdrop-filter: blur(5px);
+        /* НИЖНЯЯ ПАНЕЛЬ СТРОИТЕЛЬСТВА */
+        #bottomBar {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 100px;
+            background: linear-gradient(0deg, #1e272e 0%, rgba(30, 39, 46, 0.9) 100%);
+            display: flex; justify-content: space-evenly; align-items: center;
+            padding: 10px 5px 25px 5px; box-sizing: border-box; z-index: 100;
+            border-top: 2px solid #576574; box-shadow: 0 -5px 20px rgba(0,0,0,0.6);
         }
-        .action-btn {
-            background: linear-gradient(to bottom, #0fb9b1, #38ada9); border: none; border-radius: 8px;
-            color: #fff; font-weight: 900; font-size: 13px; padding: 10px; cursor: pointer;
-            box-shadow: 0 4px 0 #079992; text-transform: uppercase; text-align: center;
+        .build-card {
+            width: 70px; height: 80px; background: #2f3640; border: 2px solid #718093;
+            border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            box-shadow: 0 6px 0 #192a56; transition: 0.1s; cursor: pointer; position: relative;
         }
-        .action-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #079992; }
-        .action-btn.sell { background: linear-gradient(to bottom, #ff5e57, #ff3f34); box-shadow: 0 4px 0 #d2dae2; }
+        .build-card.active { border-color: #f1c40f; background: #353b48; transform: translateY(-8px); box-shadow: 0 14px 0 #192a56, 0 0 20px rgba(241, 196, 15, 0.4); }
+        .build-card.meteor { border-color: #ee5253; } .build-card.meteor.active { box-shadow: 0 14px 0 #833471, 0 0 20px rgba(238, 82, 83, 0.4); }
+        
+        .card-icon { font-size: 28px; margin-bottom: 2px; }
+        .card-price { font-size: 14px; font-weight: 900; color: #f1c40f; text-shadow: 0 2px 2px #000; }
+        .card-name { font-size: 9px; font-weight: 700; color: #dcdde1; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        .stat-bar { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin-top: 5px; padding: 0 15px;}
-        .stat-gold { color: #f1c40f; } .stat-lives { color: #ff3f34; }
+        /* МЕНЮ АПГРЕЙДА */
+        #upgradeMenu {
+            position: absolute; display: none; flex-direction: row; gap: 10px;
+            background: rgba(30, 39, 46, 0.95); padding: 12px; border-radius: 16px;
+            border: 2px solid #00d2d3; z-index: 150; transform: translate(-50%, -120%);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+        }
+        .up-btn { background: #01a3a4; border: none; border-radius: 8px; color: #fff; font-weight: 900; padding: 10px; box-shadow: 0 4px 0 #006266; text-transform: uppercase; font-size: 12px; }
+        .up-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #006266; }
+        .sell-btn { background: #ee5253; border: none; border-radius: 8px; color: #fff; font-weight: 900; padding: 10px; box-shadow: 0 4px 0 #833471; text-transform: uppercase; font-size: 12px; }
+        .sell-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #833471; }
+
+        /* ОВЕРЛЕИ */
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 300; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; backdrop-filter: blur(5px); }
+        .overlay h1 { color: #f1c40f; font-size: 42px; margin-bottom: 10px; text-shadow: 0 4px 10px #000; }
+        .overlay p { font-size: 18px; color: #c8d6e5; line-height: 1.5; margin-bottom: 25px; }
+        .overlay-btn { background: #00d2d3; color: #fff; padding: 15px 40px; border-radius: 12px; font-size: 22px; font-weight: 900; border: none; box-shadow: 0 6px 0 #006266; cursor: pointer; text-transform: uppercase; }
+        .overlay-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #006266; }
+
     </style>
 </head>
 <body>
     
-    <div id="topUI">
-        <button id="backBtn" onclick="window.location.href='../index.html'">◀ ХАБ</button>
-        <div style="text-align: center; line-height: 1.2;">
-            <div style="font-weight: 900; font-size: 16px;">ВОЛНА <span id="waveUi">1</span></div>
-        </div>
-        <button id="speedBtn" onclick="toggleSpeed()">⏩ x1</button>
-    </div>
-    
-    <div class="stat-bar" style="position: absolute; top: 60px; width: 100%; z-index: 90;">
-        <span class="stat-gold" id="goldUi">🪙 150</span>
-        <span class="stat-lives" id="livesUi">20 ❤️</span>
-    </div>
-
-    <div id="bottomUI">
-        <div class="build-btn active" id="btn-basic" onclick="selectAction('basic')">
-            <div class="tower-icon icon-cannon"></div> Пушка <span>50</span>
-        </div>
-        <div class="build-btn" id="btn-magic" onclick="selectAction('magic')">
-            <div class="tower-icon icon-magic"></div> Кристалл <span>120</span>
-        </div>
-        <div class="build-btn" id="btn-tesla" onclick="selectAction('tesla')">
-            <div class="tower-icon icon-tesla"></div> Тесла <span>200</span>
-        </div>
-        <div class="build-btn meteor-btn" id="btn-meteor" onclick="selectAction('meteor')">
-            <div class="tower-icon icon-meteor"></div> УДАР! <span>150</span>
+    <div id="topBar">
+        <button id="backBtn" onclick="window.location.href='../index.html'">В МЕНЮ</button>
+        <div class="stats-container">
+            <span class="stat-wave" id="uiWave">ВОЛНА: 1</span>
+            <span class="stat-gold" id="uiGold">🪙 200</span>
+            <span class="stat-lives" id="uiLives">20 ❤️</span>
         </div>
     </div>
 
-    <div id="towerMenu">
-        <button class="action-btn" id="btn-upgrade" onclick="upgradeSelectedTower()">АПГРЕЙД (100)</button>
-        <button class="action-btn sell" id="btn-sell" onclick="sellSelectedTower()">ПРОДАТЬ (40)</button>
+    <div id="bottomBar">
+        <div class="build-card active" onclick="selectTower('basic', this)">
+            <div class="card-icon">💣</div><div class="card-name">Пушка</div><div class="card-price">50g</div>
+        </div>
+        <div class="build-card" onclick="selectTower('magic', this)">
+            <div class="card-icon">💎</div><div class="card-name">Кристалл</div><div class="card-price">120g</div>
+        </div>
+        <div class="build-card" onclick="selectTower('tesla', this)">
+            <div class="card-icon">⚡</div><div class="card-name">Тесла</div><div class="card-price">200g</div>
+        </div>
+        <div class="build-card meteor" onclick="selectTower('meteor', this)">
+            <div class="card-icon">☄️</div><div class="card-name">Метеорит</div><div class="card-price">150g</div>
+        </div>
+    </div>
+
+    <div id="upgradeMenu">
+        <button class="up-btn" id="btn-up" onclick="upgradeTower()">АПГРЕЙД</button>
+        <button class="sell-btn" id="btn-sell" onclick="sellTower()">ПРОДАТЬ</button>
+    </div>
+
+    <div id="tutOverlay" class="overlay">
+        <h1>Королевство</h1>
+        <p>Командующий <span id="tutName" style="color:#00d2d3"></span>!<br>Орки и Гоблины атакуют!<br><br>1. Выбирай башни внизу.<br>2. Строй их на каменных плитах.<br>3. Тапай по башням для улучшения.</p>
+        <button class="overlay-btn" onclick="startGame()">ЗАЩИЩАТЬ</button>
+    </div>
+
+    <div id="goOverlay" class="overlay">
+        <h1 style="color:#ff6b6b">ЗАМОК ПАЛ</h1>
+        <p id="goStats"></p>
+        <button class="overlay-btn" onclick="resetGame()">РЕВАНШ</button>
     </div>
 
     <canvas id="gameCanvas"></canvas>
 
     <script>
-        const tg = window.Telegram.WebApp; tg.expand(); if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        const tg = window.Telegram.WebApp; tg.expand(); if(tg.disableVerticalSwipes) tg.disableVerticalSwipes();
         tg.setHeaderColor('#1e272e');
 
-        const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Hero", username: "Player" };
+        const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Hero" };
         const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
-        let nickname = user.username || user.first_name || "Игрок";
+        let nickname = user.first_name || "Генерал";
+        document.getElementById('tutName').innerText = nickname;
 
-        async function sendScoreToDatabase(collectedCoins) {
-            try { await fetch(`${BACKEND_URL}/save_score`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telegram_id: user.id, username: nickname, score: wave, coins: collectedCoins }) }); } catch (e) {}
-        }
+        let bankCoins = 0;
+        async function sendScore(coins) { try { await fetch(`${BACKEND_URL}/save_score`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({telegram_id: user.id, username: nickname, score: wave, coins: coins}) }); } catch(e){} }
 
         const canvas = document.getElementById('gameCanvas'); const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
 
-        let audioCtx; const sfxBuffers = {};
-        async function initWebAudio() {
+        // Звуки
+        let audioCtx; const sfx = {};
+        async function initAudio() {
             if (audioCtx) return; audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const loadBuffer = async (url, key) => { try { const res = await fetch(url); const buf = await res.arrayBuffer(); sfxBuffers[key] = await audioCtx.decodeAudioData(buf); } catch (e) {} };
-            await Promise.all([ loadBuffer('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3', 'shoot'), loadBuffer('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3', 'boom') ]);
+            const load = async (url, key) => { try { const r = await fetch(url); const b = await r.arrayBuffer(); sfx[key] = await audioCtx.decodeAudioData(b); } catch(e){} };
+            await Promise.all([load('https://coral-app-jxzy5.ondigitalocean.app/game/shoot.mp3', 'shoot'), load('https://coral-app-jxzy5.ondigitalocean.app/game/boom.mp3', 'boom')]);
         }
-        function playSFX(key, vol, pitch=1) {
-            if (!audioCtx || !sfxBuffers[key]) return; if (audioCtx.state === 'suspended') audioCtx.resume();
-            const source = audioCtx.createBufferSource(); source.buffer = sfxBuffers[key]; source.playbackRate.value = pitch;
-            const gainNode = audioCtx.createGain(); gainNode.gain.value = vol; 
-            source.connect(gainNode); gainNode.connect(audioCtx.destination); source.start(0);
+        function play(key, vol, pitch=1) {
+            if(!audioCtx || !sfx[key]) return; if(audioCtx.state==='suspended') audioCtx.resume();
+            const src = audioCtx.createBufferSource(); src.buffer = sfx[key]; src.playbackRate.value = pitch;
+            const gain = audioCtx.createGain(); gain.gain.value = vol; src.connect(gain); gain.connect(audioCtx.destination); src.start(0);
         }
 
-        // ИГРОВЫЕ ПЕРЕМЕННЫЕ
-        let gameState = 'PLAYING'; 
-        let gameSpeed = 1; // УСКОРЕНИЕ ИГРЫ
-        let lives = 20; let inGameGold = 250; let sessionGlobalCoins = 0; let wave = 1;
-        let enemies = []; let towers = []; let bullets = []; let particles = []; let floatTexts = []; let buildPlots = [];
-        let scorchMarks = []; let shockwaves = []; let lightnings = []; 
+        // КОНСТАНТЫ ИГРОВОГО МИРА
+        const UI_TOP = 60; const UI_BOTTOM = canvas.height - 100;
+        const PLAY_H = UI_BOTTOM - UI_TOP;
         
-        let selectedAction = 'basic'; // basic, magic, tesla, meteor
-        let frameCount = 0; let waveTimer = 100; let enemiesToSpawn = 5; let spawnCooldown = 0;
+        let gameState = 'MENU'; 
+        let lives = 20, gold = 200, wave = 1, sessionCoins = 0, frame = 0;
         let screenShake = 0;
 
-        let selectedTowerForUpgrade = null;
+        let waypoints = [], plots = [], env = [];
+        let enemies = [], towers = [], bullets = [], particles = [], texts = [], marks = [], lightnings = [];
+        let selectedType = 'basic'; let selectedPlot = null;
 
-        window.toggleSpeed = function() {
-            gameSpeed = gameSpeed === 1 ? 2 : 1;
-            document.getElementById('speedBtn').innerText = `⏩ x${gameSpeed}`;
-            document.getElementById('speedBtn').style.background = gameSpeed === 2 ? 'linear-gradient(to bottom, #e84118, #c23616)' : 'linear-gradient(to bottom, #0fb9b1, #38ada9)';
+        window.selectTower = function(type, el) {
+            selectedType = type;
+            document.querySelectorAll('.build-card').forEach(c => c.classList.remove('active'));
+            el.classList.add('active'); closeMenu(); play('shoot', 0.05, 2);
         }
 
-        window.selectAction = function(action) {
-            selectedAction = action;
-            document.querySelectorAll('.build-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(`btn-${action}`).classList.add('active');
-            closeTowerMenu(); playSFX('shoot', 0.05, 2);
+        function updateHUD() {
+            document.getElementById('uiWave').innerText = `ВОЛНА: ${wave}`;
+            document.getElementById('uiGold').innerText = `🪙 ${gold}`;
+            document.getElementById('uiLives').innerText = `${lives} ❤️`;
         }
 
-        function updateUI() {
-            document.getElementById('waveUi').innerText = wave;
-            document.getElementById('goldUi').innerText = `🪙 ${inGameGold}`;
-            document.getElementById('livesUi').innerText = `${lives} ❤️`;
-        }
+        // ГЕНЕРАЦИЯ КАРТЫ
+        function initMap() {
+            // Динамический путь, чтобы ровно влезал между UI
+            waypoints = [
+                {x: canvas.width*0.2, y: UI_TOP - 20},
+                {x: canvas.width*0.2, y: UI_TOP + PLAY_H*0.25},
+                {x: canvas.width*0.8, y: UI_TOP + PLAY_H*0.25},
+                {x: canvas.width*0.8, y: UI_TOP + PLAY_H*0.65},
+                {x: canvas.width*0.3, y: UI_TOP + PLAY_H*0.65},
+                {x: canvas.width*0.3, y: UI_BOTTOM - 20},
+                {x: canvas.width*0.7, y: UI_BOTTOM - 20},
+                {x: canvas.width*0.7, y: UI_BOTTOM + 30} // Вход в замок
+            ];
 
-        // ПУТЬ
-        const pathW = 40; 
-        const waypoints = [
-            { x: canvas.width * 0.15, y: -50 }, { x: canvas.width * 0.15, y: canvas.height * 0.20 },
-            { x: canvas.width * 0.80, y: canvas.height * 0.20 }, { x: canvas.width * 0.80, y: canvas.height * 0.45 },
-            { x: canvas.width * 0.20, y: canvas.height * 0.45 }, { x: canvas.width * 0.20, y: canvas.height * 0.70 },
-            { x: canvas.width * 0.70, y: canvas.height * 0.70 }, { x: canvas.width * 0.70, y: canvas.height + 50 } 
-        ];
+            plots = []; env = [];
+            // Генерация мест под башни
+            let plotCoords = [
+                [0.4, 0.12], [0.65, 0.12], [0.35, 0.45], [0.6, 0.45], 
+                [0.1, 0.45], [0.85, 0.45], [0.5, 0.8], [0.15, 0.8]
+            ];
+            plotCoords.forEach(p => {
+                plots.push({x: canvas.width*p[0], y: UI_TOP + PLAY_H*p[1], occ: false, t: null});
+            });
 
-        function generateMapDetails() {
-            buildPlots = [];
-            for(let x = 45; x < canvas.width - 45; x += 60) {
-                for(let y = 100; y < canvas.height - 120; y += 60) {
-                    let tooClose = false;
-                    for (let j = 0; j < waypoints.length - 1; j++) {
-                        if (Math.sqrt(distToSegmentSquared({x, y}, waypoints[j], waypoints[j+1])) < pathW/2 + 25) { tooClose = true; break; }
-                    }
-                    if (!tooClose) buildPlots.push({ x: x + (Math.random()*10-5), y: y + (Math.random()*10-5), occupied: false, tower: null });
-                }
+            // Декорации (Трава, камни, елки)
+            for(let i=0; i<40; i++) {
+                let dx = Math.random()*canvas.width; let dy = UI_TOP + 20 + Math.random()*(PLAY_H-40);
+                env.push({x: dx, y: dy, type: Math.random()>0.4?'tree':'grass', size: 10+Math.random()*15});
             }
         }
-        generateMapDetails();
 
-        function triggerShake(intensity) { screenShake = Math.max(screenShake, intensity); }
-        
-        function createExplosion(x, y, color, sizeMult = 1, isBlood = false) {
-            if (!isBlood) {
-                playSFX('boom', 0.15 * sizeMult, 0.8 + Math.random()*0.4);
-                shockwaves.push({ x, y, radius: 5, maxRadius: 60 * sizeMult, life: 1.0, color: '#fff' });
-                if(sizeMult > 1.5) triggerShake(6 * sizeMult);
-                scorchMarks.push({ x, y, size: 25 * sizeMult, life: 1000 }); 
+        function distSq(p, v, w) {
+            let l2 = (v.x-w.x)**2 + (v.y-w.y)**2; if(l2===0) return (p.x-v.x)**2 + (p.y-v.y)**2;
+            let t = Math.max(0, Math.min(1, ((p.x-v.x)*(w.x-v.x) + (p.y-v.y)*(w.y-v.y))/l2));
+            return (p.x - (v.x+t*(w.x-v.x)))**2 + (p.y - (v.y+t*(w.y-v.y)))**2;
+        }
+
+        // ВИЗУАЛЬНЫЕ ЭФФЕКТЫ
+        function shake(v) { screenShake = Math.max(screenShake, v); }
+        function spawnTxt(x, y, txt, col, sz=16) { texts.push({x, y, txt, col, sz, life:1, vy:-1.5}); }
+        function explode(x, y, col, sm=1) {
+            if(sm > 1) { shake(4*sm); play('boom', 0.15*sm, 0.8+Math.random()*0.4); marks.push({x,y,sz:25*sm,life:300}); }
+            for(let i=0; i<15*sm; i++) particles.push({x, y, vx:(Math.random()-0.5)*12*sm, vy:(Math.random()-0.5)*12*sm-2, life:1+Math.random()*0.5, d:0.03+Math.random()*0.03, col, sz:Math.random()*5*sm+2});
+        }
+
+        // ВОЛНЫ
+        let eSpawn=0, eTimer=0, wTimer=100;
+        function getHp() { return 50 + (wave * 30); }
+        function spawnE() {
+            if(wave%5===0 && eSpawn===1) {
+                shake(10); play('boom',0.4,0.5); spawnTxt(canvas.width/2, UI_TOP+100, "БОСС!", "#ee5253", 40);
+                enemies.push({x:waypoints[0].x, y:waypoints[0].y, tid:1, spd:0.4, hp:getHp()*12, mhp:getHp()*12, c:'#2f3640', sz:28, rew:300, type:'boss'});
             } else {
-                scorchMarks.push({ x, y, size: 15 * sizeMult, life: 400, isBlood: true });
-            }
-            for (let i = 0; i < 15 * sizeMult; i++) {
-                particles.push({
-                    x: x, y: y, vx: (Math.random() - 0.5) * 14 * sizeMult, vy: (Math.random() - 0.5) * 14 * sizeMult - (isBlood ? 2 : 0),
-                    life: 1.0 + Math.random()*0.5, decay: 0.02 + Math.random() * 0.04, color: color, size: Math.random() * 6 * sizeMult + 2, isSpark: !isBlood
-                });
+                let r = Math.random();
+                if(wave>2 && r>0.7) enemies.push({x:waypoints[0].x, y:waypoints[0].y, tid:1, spd:2.0, hp:getHp()*0.6, mhp:getHp()*0.6, c:'#f39c12', sz:10, rew:15, type:'fast'});
+                else if(wave>3 && r>0.4) enemies.push({x:waypoints[0].x, y:waypoints[0].y, tid:1, spd:0.9, hp:getHp()*2.5, mhp:getHp()*2.5, c:'#7f8c8d', sz:16, rew:20, type:'tank'});
+                else enemies.push({x:waypoints[0].x, y:waypoints[0].y, tid:1, spd:1.3, hp:getHp(), mhp:getHp(), c:'#2ecc71', sz:12, rew:10, type:'norm'});
             }
         }
 
-        function createFloatText(x, y, text, color, size=16, isCrit=false) {
-            floatTexts.push({ x, y, text, color, life: 1.0, vy: isCrit ? -2 : -1, size: isCrit ? size*1.5 : size, isCrit });
-        }
-
-        // АКТИВНЫЙ НАВЫК: МЕТЕОРИТ
-        function castMeteor(tx, ty) {
-            inGameGold -= 150;
-            updateUI();
-            selectedAction = 'basic'; // Сброс выбора
-            document.querySelectorAll('.build-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById('btn-basic').classList.add('active');
-            
-            createFloatText(tx, ty - 50, "ВХОДЯЩИЙ УДАР!", "#e84118", 24, true);
-            
-            // Задержка перед ударом
-            setTimeout(() => {
-                if(gameState !== 'PLAYING') return;
-                createExplosion(tx, ty, '#ff7f50', 4); // Огромный взрыв
-                enemies.forEach(e => {
-                    if (Math.hypot(e.x - tx, e.y - ty) < 150 && !e.dead) { // Большой радиус
-                        e.hp -= 500; // Стирает почти всех
-                        if (e.hp <= 0 && !e.dead) killEnemy(e);
-                    }
-                });
-            }, 500); // 0.5 сек летит метеорит
-        }
-
-        function spawnEnemy() {
-            let hpBase = 40 + (wave * 25); 
-            
-            if (wave % 5 === 0 && enemiesToSpawn === 1) { 
-                triggerShake(10); playSFX('boom', 0.4, 0.5);
-                enemies.push({ x: waypoints[0].x, y: waypoints[0].y, targetIdx: 1, baseSpeed: 0.5, speed: 0.5, hp: hpBase * 12, maxHp: hpBase * 12, color: '#2f3640', size: 35, reward: 300, slowTimer: 0, type: 'boss', regen: wave * 2, isFlying: false });
-                createFloatText(canvas.width/2, 100, "БОСС ОГР!", "#e84118", 40, true);
-            } else {
-                let rand = Math.random();
-                if (wave >= 8 && rand > 0.8) { 
-                    // ЛЕТАЮЩАЯ ГАРГУЛЬЯ (Игнорит дорогу, летит на базу)
-                    let baseTarget = waypoints[waypoints.length-1];
-                    enemies.push({ x: waypoints[0].x + (Math.random()*100-50), y: -50, targetIdx: 0, baseSpeed: 1.0, speed: 1.0, hp: hpBase * 0.8, maxHp: hpBase * 0.8, color: '#8e44ad', size: 14, reward: 20, slowTimer: 0, type: 'fly', isFlying: true, targetX: baseTarget.x, targetY: baseTarget.y });
-                }
-                else if (wave >= 3 && rand > 0.6) { 
-                    enemies.push({ x: waypoints[0].x, y: waypoints[0].y, targetIdx: 1, baseSpeed: 2.2, speed: 2.2, hp: hpBase * 0.6, maxHp: hpBase * 0.6, color: '#e1b12c', size: 10, reward: 15, slowTimer: 0, type: 'wolf', isFlying: false }); 
-                } 
-                else if (wave >= 2 && rand > 0.4) { 
-                    enemies.push({ x: waypoints[0].x, y: waypoints[0].y, targetIdx: 1, baseSpeed: 1.0, speed: 1.0, hp: hpBase * 2, maxHp: hpBase * 2, color: '#718093', size: 16, reward: 20, slowTimer: 0, type: 'tank', isFlying: false }); 
-                } 
-                else { 
-                    enemies.push({ x: waypoints[0].x, y: waypoints[0].y, targetIdx: 1, baseSpeed: 1.4, speed: 1.4, hp: hpBase, maxHp: hpBase, color: '#44bd32', size: 12, reward: 10, slowTimer: 0, type: 'normal', isFlying: false }); 
-                }
-            }
-        }
-
-        function nextWave() {
-            wave++;
-            enemiesToSpawn = wave % 5 === 0 ? 1 : (8 + Math.floor(wave * 3)); 
-            waveTimer = 200; 
-            sessionGlobalCoins += 15;
-            if(wave > 1) {
-                inGameGold += 50;
-                createFloatText(canvas.width/2, 120, `ВОЛНА ${wave} (+50g)`, "#fbc531", 24, true);
-            }
-            updateUI();
-        }
-
-        function resetGame() {
-            wave = 0; inGameGold = 200; sessionGlobalCoins = 0; lives = 20; screenShake = 0; gameSpeed = 1; closeTowerMenu();
-            enemies = []; towers = []; bullets = []; particles = []; floatTexts = []; scorchMarks = []; shockwaves = []; lightnings = [];
-            buildPlots.forEach(p => { p.occupied = false; p.tower = null; });
-            gameState = 'PLAYING'; nextWave();
-        }
-
-        function distToSegmentSquared(p, v, w) {
-            let l2 = (v.x - w.x)**2 + (v.y - w.y)**2; if (l2 === 0) return (p.x - v.x)**2 + (p.y - v.y)**2;
-            let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2; t = Math.max(0, Math.min(1, t));
-            return (p.x - (v.x + t * (w.x - v.x)))**2 + (p.y - (v.y + t * (w.y - v.y)))**2;
-        }
-
-        function updateLogic() {
-            frameCount++;
-            if (screenShake > 0) screenShake *= 0.9; if (screenShake < 0.5) screenShake = 0;
-
-            if (enemiesToSpawn > 0) {
-                if (waveTimer > 0) waveTimer--;
-                else { spawnCooldown--; if (spawnCooldown <= 0) { spawnEnemy(); enemiesToSpawn--; spawnCooldown = wave % 5 === 0 ? 0 : Math.max(15, 40 - wave); } }
-            } else if (enemies.length === 0) { nextWave(); }
-
-            particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life -= p.decay; if(p.isSpark) { p.vx *= 0.95; p.vy += 0.2; } }); particles = particles.filter(p => p.life > 0);
-            floatTexts.forEach(ft => { ft.y += ft.vy; ft.life -= 0.015; }); floatTexts = floatTexts.filter(ft => ft.life > 0);
-            scorchMarks.forEach(s => s.life--); scorchMarks = scorchMarks.filter(s => s.life > 0);
-            shockwaves.forEach(sw => { sw.radius += (sw.maxRadius - sw.radius) * 0.15; sw.life -= 0.05; }); shockwaves = shockwaves.filter(sw => sw.life > 0);
-            lightnings.forEach(l => l.life -= 0.1); lightnings = lightnings.filter(l => l.life > 0);
-
-            // ВРАГИ
-            enemies.forEach(e => {
-                if (e.slowTimer > 0) { e.slowTimer--; e.speed = e.baseSpeed * 0.5; } else { e.speed = e.baseSpeed; }
-                if (e.type === 'boss' && frameCount % 30 === 0 && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.regen); 
-
-                if (e.isFlying) {
-                    // Летят по прямой к базе
-                    let dx = e.targetX - e.x; let dy = e.targetY - e.y;
-                    let dist = Math.hypot(dx, dy);
-                    if (dist < e.speed) {
-                        lives -= 2; triggerShake(5); createExplosion(e.x, e.y, '#8e44ad', 1.5); e.dead = true;
-                    } else {
-                        e.x += (dx / dist) * e.speed; e.y += (dy / dist) * e.speed;
-                    }
-                } else {
-                    // Идут по дороге
-                    let target = waypoints[e.targetIdx];
-                    let dx = target.x - e.x; let dy = target.y - e.y;
-                    let dist = Math.hypot(dx, dy);
-
-                    if (dist < e.speed) {
-                        e.x = target.x; e.y = target.y; e.targetIdx++;
-                        if (e.targetIdx >= waypoints.length) {
-                            lives -= (e.type === 'boss' ? 10 : (e.size > 13 ? 2 : 1));
-                            triggerShake(15); createExplosion(e.x, e.y, '#e84118', 3); e.dead = true;
-                        }
-                    } else { e.x += (dx / dist) * e.speed; e.y += (dy / dist) * e.speed; }
-                }
-            });
-            
-            if(enemies.some(e => e.dead)) updateUI();
-            if (lives <= 0 && gameState === 'PLAYING') { gameState = 'GAME_OVER'; closeTowerMenu(); document.getElementById('bottomUI').style.display = 'none'; sendScoreToDatabase(sessionGlobalCoins); }
-
-            // БАШНИ
-            towers.forEach(t => {
-                if (t.cooldown > 0) t.cooldown--;
-                if (t.recoil > 0) t.recoil -= 0.6; 
-
-                let closestEnemy = null; let minDist = t.range;
-                enemies.filter(e => !e.dead).forEach(e => {
-                    let d = Math.hypot(e.x - t.x, e.y - t.y);
-                    if (d < minDist) { minDist = d; closestEnemy = e; }
-                });
-
-                if (closestEnemy && t.cooldown <= 0) {
-                    t.angle = Math.atan2(closestEnemy.y - (t.y-25), closestEnemy.x - t.x); 
-                    
-                    if (t.type === 'tesla') {
-                        playSFX('shoot', 0.1, 3); t.recoil = 3; t.cooldown = t.fireRate;
-                        let chainCount = t.level; 
-                        let currentTarget = closestEnemy; let lastNode = {x: t.x, y: t.y-25}; let hitEnemies = [];
-
-                        for(let i=0; i<=chainCount; i++) {
-                            if(!currentTarget) break;
-                            hitEnemies.push(currentTarget);
-                            lightnings.push({ start: lastNode, end: {x: currentTarget.x, y: currentTarget.y}, life: 1.0 });
-                            
-                            currentTarget.hp -= t.damage;
-                            particles.push({x: currentTarget.x, y: currentTarget.y, vx:(Math.random()-0.5)*10, vy:(Math.random()-0.5)*10, life:1, decay:0.1, color:'#fff', size:4, isSpark:true});
-                            if (currentTarget.hp <= 0 && !currentTarget.dead) killEnemy(currentTarget);
-
-                            lastNode = {x: currentTarget.x, y: currentTarget.y};
-                            let nextTarget = null; let nextMinDist = 90; 
-                            enemies.filter(e => !e.dead && !hitEnemies.includes(e)).forEach(e => {
-                                let d = Math.hypot(e.x - lastNode.x, e.y - lastNode.y);
-                                if(d < nextMinDist) { nextMinDist = d; nextTarget = e; }
-                            });
-                            currentTarget = nextTarget;
-                        }
-                    } else {
-                        playSFX('shoot', t.type==='basic'?0.05:0.02, t.type==='basic'?1:1.5); 
-                        t.recoil = 8; t.cooldown = t.fireRate;
-                        bullets.push({ x: t.x + Math.cos(t.angle)*15, y: (t.y-25) + Math.sin(t.angle)*15, target: closestEnemy, speed: t.type === 'magic' ? 7 : 14, damage: t.damage, type: t.type, targetX: closestEnemy.x, targetY: closestEnemy.y });
-                        particles.push({x: t.x + Math.cos(t.angle)*25, y: (t.y-25) + Math.sin(t.angle)*25, vx:(Math.random()-0.5)*4, vy:(Math.random()-0.5)*4, life:1, decay:0.08, color: t.type === 'magic' ? '#00d8d6' : '#d2dae2', size: 6});
-                    }
-                }
-            });
-
-            // ПУЛИ
-            bullets.forEach(b => {
-                let dx = (b.type === 'magic' ? b.targetX : b.target.x) - b.x;
-                let dy = (b.type === 'magic' ? b.targetY : b.target.y) - b.y;
-                let dist = Math.hypot(dx, dy);
-
-                if (dist < b.speed) {
-                    b.dead = true;
-                    if (b.type === 'magic') {
-                        createExplosion(b.targetX, b.targetY, '#0fb9b1', 1.8 + b.damage/40);
-                        enemies.forEach(e => {
-                            if (Math.hypot(e.x - b.targetX, e.y - b.targetY) < 60 + b.damage/2 && !e.dead) { 
-                                e.hp -= b.damage; e.slowTimer = 180; 
-                                if (e.hp <= 0 && !e.dead) killEnemy(e);
-                            }
-                        });
-                    } else {
-                        if(b.target.dead) return;
-                        b.target.hp -= b.damage;
-                        particles.push({x: b.target.x, y: b.target.y, vx: (Math.random()-0.5)*6, vy: (Math.random()-0.5)*6, life:0.8, decay:0.1, color:'#f1c40f', size:4, isSpark:true});
-                        if (b.target.hp <= 0 && !b.target.dead) killEnemy(b.target);
-                    }
-                } else { 
-                    b.x += (dx / dist) * b.speed; b.y += (dy / dist) * b.speed; 
-                    if(b.type === 'magic') particles.push({x: b.x, y: b.y, vx:0, vy:0, life:0.5, decay:0.1, color:'#00d8d6', size:4}); 
-                }
-            });
-
-            enemies = enemies.filter(e => !e.dead); bullets = bullets.filter(b => !b.dead);
-        }
-
-        // Вызываем updateLogic() в зависимости от gameSpeed (x1 или x2)
         function update() {
             if(gameState !== 'PLAYING') return;
-            for(let i=0; i<gameSpeed; i++) { updateLogic(); }
-        }
+            frame++; if(screenShake>0) screenShake*=0.85; if(screenShake<0.5) screenShake=0;
 
-        function killEnemy(e) {
-            e.dead = true; inGameGold += e.reward; updateUI();
-            createExplosion(e.x, e.y, '#e84118', e.type === 'boss' ? 4 : 1.2, true); 
-            createFloatText(e.x, e.y-10, `+${e.reward}`, "#fbc531", e.type === 'boss'? 24:16);
-            if (e.type === 'boss') { sessionGlobalCoins += 200; triggerShake(20); }
-        }
+            if(eSpawn>0) {
+                if(wTimer>0) wTimer--; else { eTimer--; if(eTimer<=0){ spawnE(); eSpawn--; eTimer=wave%5===0?0:Math.max(15, 45-wave); } }
+            } else if(enemies.length===0) {
+                wave++; eSpawn = wave%5===0 ? 1 : 6+Math.floor(wave*2.5); wTimer = 180;
+                if(wave>1) { gold+=50; sessionCoins+=15; spawnTxt(canvas.width/2, UI_TOP+60, `ВОЛНА ${wave}`, "#f1c40f", 24); updateHUD(); }
+            }
 
-        function openTowerMenu(plot) {
-            selectedTowerForUpgrade = plot.tower;
-            let menu = document.getElementById('towerMenu');
-            menu.style.display = 'flex';
-            
-            // Защита от вылета за края
-            let mX = plot.x; let mY = plot.y - 60;
-            if (mX < 70) mX = 70; if (mX > canvas.width - 70) mX = canvas.width - 70;
-            if (mY < 120) mY = plot.y + 40; // Если слишком высоко, показываем под башней
+            // Логика объектов
+            particles.forEach(p=>{p.x+=p.vx; p.y+=p.vy; p.vy+=0.2; p.life-=p.d;}); particles=particles.filter(p=>p.life>0);
+            texts.forEach(t=>{t.y+=t.vy; t.life-=0.02;}); texts=texts.filter(t=>t.life>0);
+            marks.forEach(m=>m.life--); marks=marks.filter(m=>m.life>0);
+            lightnings.forEach(l=>l.life-=0.1); lightnings=lightnings.filter(l=>l.life>0);
 
-            menu.style.left = `${mX}px`; menu.style.top = `${mY}px`; 
-            menu.style.transform = `translate(-50%, -50%)`;
-            updateMenuButtons();
-        }
+            enemies.forEach(e => {
+                let slw = e.slw > 0; if(slw) e.slw--;
+                let s = slw ? e.spd*0.5 : e.spd;
+                let t = waypoints[e.tid]; let dx=t.x-e.x, dy=t.y-e.y, d=Math.hypot(dx,dy);
+                if(d<s) {
+                    e.x=t.x; e.y=t.y; e.tid++;
+                    if(e.tid>=waypoints.length) { e.dead=1; lives-=(e.type==='boss'?10:1); shake(10); explode(e.x,e.y,'#ee5253',2); updateHUD(); if(lives<=0) gameOver(); }
+                } else { e.x+=(dx/d)*s; e.y+=(dy/d)*s; }
+            });
 
-        function closeTowerMenu() { selectedTowerForUpgrade = null; document.getElementById('towerMenu').style.display = 'none'; }
-
-        function updateMenuButtons() {
-            if(!selectedTowerForUpgrade) return;
-            let t = selectedTowerForUpgrade;
-            let btnUp = document.getElementById('btn-upgrade');
-            let btnSell = document.getElementById('btn-sell');
-            
-            btnSell.innerText = `ПРОДАТЬ (${Math.floor(t.totalCost * 0.8)})`;
-            if (t.level >= 3) { btnUp.innerText = "МАКСИМУМ"; btnUp.style.opacity = '0.5'; } 
-            else { let upCost = t.baseCost * t.level; btnUp.innerText = `АПГРЕЙД (${upCost})`; btnUp.style.opacity = '1.0'; }
-        }
-
-        window.upgradeSelectedTower = function() {
-            if(!selectedTowerForUpgrade || selectedTowerForUpgrade.level >= 3) return;
-            let t = selectedTowerForUpgrade; let upCost = t.baseCost * t.level;
-
-            if (inGameGold >= upCost) {
-                inGameGold -= upCost; updateUI();
-                t.totalCost += upCost; t.level++;
+            towers.forEach(t => {
+                if(t.cd>0) t.cd--; if(t.rec>0) t.rec-=0.5;
+                let ce=null, md=t.rng;
+                enemies.filter(e=>!e.dead).forEach(e=>{ let d=Math.hypot(e.x-t.x, e.y-t.y); if(d<md){md=d; ce=e;} });
                 
-                t.damage = Math.floor(t.damage * 1.5);
-                t.range += 10;
-                t.fireRate = Math.max(10, Math.floor(t.fireRate * 0.8));
+                if(ce && t.cd<=0) {
+                    t.ang = Math.atan2(ce.y-(t.y-20), ce.x-t.x);
+                    if(t.type==='tesla') {
+                        play('shoot',0.1,3); t.rec=4; t.cd=t.fr;
+                        let cur=ce, node={x:t.x, y:t.y-20}, hit=[];
+                        for(let i=0; i<=t.lvl; i++) {
+                            if(!cur) break; hit.push(cur); lightnings.push({s:node, e:{x:cur.x,y:cur.y}, life:1});
+                            cur.hp-=t.dmg; particles.push({x:cur.x, y:cur.y, vx:(Math.random()-0.5)*10,vy:(Math.random()-0.5)*10, life:1, d:0.1, col:'#fff', sz:3});
+                            if(cur.hp<=0 && !cur.dead) kill(cur);
+                            node={x:cur.x, y:cur.y}; let nt=null, nmd=100;
+                            enemies.filter(e=>!e.dead && !hit.includes(e)).forEach(e=>{let d=Math.hypot(e.x-node.x, e.y-node.y); if(d<nmd){nmd=d; nt=e;}}); cur=nt;
+                        }
+                    } else {
+                        play('shoot',t.type==='basic'?0.05:0.03, t.type==='basic'?1:1.5); t.rec=6; t.cd=t.fr;
+                        bullets.push({x:t.x+Math.cos(t.ang)*10, y:(t.y-20)+Math.sin(t.ang)*10, t:ce, spd:t.type==='magic'?6:12, dmg:t.dmg, type:t.type, tx:ce.x, ty:ce.y});
+                    }
+                }
+            });
 
-                playSFX('shoot', 0.2, 0.5); createExplosion(t.x, t.y, '#f1c40f', 2);
-                createFloatText(t.x, t.y - 40, "UPGRADE!", "#f1c40f", 20, true);
-                updateMenuButtons();
-            } else { createFloatText(t.x, t.y - 40, "НЕТ ЗОЛОТА!", "#e84118", 18); }
+            bullets.forEach(b => {
+                let dx=(b.type==='magic'?b.tx:b.t.x)-b.x, dy=(b.type==='magic'?b.ty:b.t.y)-b.y, d=Math.hypot(dx,dy);
+                if(d<b.spd) {
+                    b.dead=1;
+                    if(b.type==='magic') {
+                        explode(b.tx, b.ty, '#00d2d3', 1.5);
+                        enemies.forEach(e=>{ if(Math.hypot(e.x-b.tx,e.y-b.ty)<60 && !e.dead){ e.hp-=b.dmg; e.slw=150; if(e.hp<=0) kill(e); } });
+                    } else {
+                        if(b.t.dead) return; b.t.hp-=b.dmg; particles.push({x:b.t.x,y:b.t.y,vx:(Math.random()-0.5)*6,vy:(Math.random()-0.5)*6,life:0.8,d:0.1,col:'#f1c40f',sz:3});
+                        if(b.t.hp<=0) kill(b.t);
+                    }
+                } else {
+                    // Псевдо-3D дуга для ядер
+                    if(b.type==='basic') { let prog=1-(d/Math.hypot(b.t.x-b.startX, b.t.y-b.startY)); b.arc = Math.sin(prog*Math.PI)*20; }
+                    b.x+=(dx/d)*b.spd; b.y+=(dy/d)*b.spd;
+                    if(b.type==='magic') particles.push({x:b.x,y:b.y,vx:0,vy:0,life:0.5,d:0.1,col:'#00d2d3',sz:3});
+                }
+            });
+
+            enemies = enemies.filter(e=>!e.dead); bullets = bullets.filter(b=>!b.dead);
         }
 
-        window.sellSelectedTower = function() {
-            if(!selectedTowerForUpgrade) return;
-            let t = selectedTowerForUpgrade;
-            let refund = Math.floor(t.totalCost * 0.8);
-            inGameGold += refund; updateUI();
-            createFloatText(t.x, t.y - 30, `+${refund}g`, "#f1c40f", 20);
-            playSFX('boom', 0.1, 2);
-            
-            towers.splice(towers.indexOf(t), 1);
-            let plot = buildPlots.find(p => p.x === t.x && p.y === t.y);
-            if(plot) { plot.occupied = false; plot.tower = null; }
-            closeTowerMenu();
+        function kill(e) {
+            e.dead=1; gold+=e.rew; updateHUD(); explode(e.x, e.y, '#c23616', e.type==='boss'?3:1, true);
+            spawnTxt(e.x, e.y-10, `+${e.rew}`, "#f1c40f", e.type==='boss'?24:16);
+            if(e.type==='boss') { sessionCoins+=150; }
         }
 
-        function drawIsometricTower(ctx, t) {
-            const bx = t.x; const by = t.y; const size = 20; 
-            ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(bx, by+12, size*1.2, size*0.6, 0, 0, Math.PI*2); ctx.fill();
-            
-            ctx.fillStyle = '#485460'; ctx.beginPath(); ctx.moveTo(bx-size, by-size*0.5); ctx.lineTo(bx+size, by-size*0.5); ctx.lineTo(bx+size, by+size*0.5); ctx.lineTo(bx-size, by+size*0.5); ctx.fill(); 
-            ctx.fillStyle = '#808e9b'; ctx.beginPath(); ctx.moveTo(bx-size, by-size*0.5); ctx.lineTo(bx, by-size); ctx.lineTo(bx+size, by-size*0.5); ctx.lineTo(bx, by); ctx.fill(); 
-            
-            ctx.save(); ctx.translate(bx, by-25); ctx.rotate(t.angle);
-            if (t.type === 'basic') {
-                ctx.fillStyle = '#1e272e'; ctx.fillRect(-12 - t.recoil, -8, 32 + (t.level*4), 16); // Ствол длиннее от лвла
-                ctx.fillStyle = '#f1f2f6'; ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI*2); ctx.fill(); 
-            } else if (t.type === 'magic') {
-                let floatY = Math.sin(frameCount * 0.12) * 4;
-                ctx.shadowBlur = 15; ctx.shadowColor = '#00d8d6'; ctx.fillStyle = '#00d8d6'; 
-                ctx.beginPath(); ctx.moveTo(0, -18 - (t.level*3) + floatY); ctx.lineTo(12+(t.level*2), 0+floatY); ctx.lineTo(0, 18+(t.level*3)+floatY); ctx.lineTo(-12-(t.level*2), 0+floatY); ctx.fill(); ctx.shadowBlur = 0;
-            } else if (t.type === 'tesla') {
-                ctx.shadowBlur = 10; ctx.shadowColor = '#575fcf';
-                ctx.fillStyle = '#3c40c6'; ctx.fillRect(-10, -10, 20, 20); 
-                ctx.fillStyle = '#fff'; ctx.fillRect(0, -5, 18 + t.recoil + (t.level*2), 10); 
-                ctx.shadowBlur = 0;
-            }
-            ctx.restore();
-
-            let lvlY = by - 45;
-            ctx.shadowBlur = 10; ctx.shadowColor = '#f1c40f'; ctx.fillStyle = '#f1c40f';
-            for(let i=0; i<t.level; i++) {
-                let pX = bx - ((t.level-1)*6) + (i*12);
-                ctx.beginPath(); ctx.moveTo(pX, lvlY-4); ctx.lineTo(pX+4, lvlY); ctx.lineTo(pX, lvlY+4); ctx.lineTo(pX-4, lvlY); ctx.fill();
-            }
-            ctx.shadowBlur = 0;
-
-            if (selectedTowerForUpgrade === t) {
-                ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
-                ctx.beginPath(); ctx.arc(bx, by-10, t.range, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
-            }
+        function gameOver() {
+            gameState = 'GAME_OVER'; sendScore(sessionCoins); document.getElementById('goStats').innerText = `Волн: ${wave-1}\nМонет в Хаб: +${sessionCoins} 🪙`;
+            document.getElementById('goOverlay').style.display = 'flex';
         }
 
-        function drawEnemyGoblins(ctx, e) {
-            if (e.isFlying) {
-                // ГАРГУЛЬЯ (Летит высоко, отбрасывает тень далеко внизу)
-                let wingFlap = Math.sin(frameCount * 0.5) * 10;
-                ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(e.x, e.y+40, e.size*1.5, e.size*0.5, 0, 0, Math.PI*2); ctx.fill(); // Тень внизу
-                
-                ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, e.size, 0, Math.PI*2); ctx.fill();
-                // Крылья
-                ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x-e.size*2, e.y-wingFlap); ctx.lineTo(e.x-e.size*0.5, e.y+e.size); ctx.fill();
-                ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x+e.size*2, e.y-wingFlap); ctx.lineTo(e.x+e.size*0.5, e.y+e.size); ctx.fill();
-                
-                // ХП
-                let hpW = e.size * 2; ctx.fillStyle = '#ff3f34'; ctx.fillRect(e.x - hpW/2, e.y - e.size - 10, hpW, 3);
-                ctx.fillStyle = '#0be881'; ctx.fillRect(e.x - hpW/2, e.y - e.size - 10, hpW * (e.hp / e.maxHp), 3);
-                return;
-            }
-
-            let wobble = Math.sin(frameCount * (e.type==='boss'?0.1:0.3)) * (e.type==='boss'?4:2); 
-            const s = e.size; const eyeY = e.y - s*0.3 + wobble;
-            ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(e.x, e.y+s*0.8, s*1.2, s*0.5, 0, 0, Math.PI*2); ctx.fill();
+        // РЕНДЕР (AAAA QUALITY)
+        function drawEnv() {
+            ctx.fillStyle='#27ae60'; ctx.fillRect(0,0,canvas.width,canvas.height);
+            // Шум травы
+            ctx.fillStyle='#218c4b'; for(let i=0;i<canvas.width;i+=25) for(let j=0;j<canvas.height;j+=25) if((i+j)%50===0) { ctx.beginPath(); ctx.arc(i,j,2,0,Math.PI); ctx.fill(); }
             
-            ctx.fillStyle = e.color; ctx.beginPath(); ctx.ellipse(e.x, e.y+wobble, s, s*1.1, 0, 0, Math.PI*2); ctx.fill();
-            if (e.type !== 'boss') { 
-                ctx.beginPath(); ctx.moveTo(e.x-s*0.6, e.y-s*0.5+wobble); ctx.lineTo(e.x-s*1.5, e.y-s*0.8+wobble); ctx.lineTo(e.x-s*0.8, e.y+wobble); ctx.fill();
-                ctx.beginPath(); ctx.moveTo(e.x+s*0.6, e.y-s*0.5+wobble); ctx.lineTo(e.x+s*1.5, e.y-s*0.8+wobble); ctx.lineTo(e.x+s*0.8, e.y+wobble); ctx.fill();
-            } else { 
-                ctx.fillStyle='#f1f2f6'; ctx.beginPath(); ctx.moveTo(e.x-s*0.5, e.y-s+wobble); ctx.lineTo(e.x-s*0.8, e.y-s*1.5+wobble); ctx.lineTo(e.x-s*0.2, e.y-s*0.8+wobble); ctx.fill();
-                ctx.beginPath(); ctx.moveTo(e.x+s*0.5, e.y-s+wobble); ctx.lineTo(e.x+s*0.8, e.y-s*1.5+wobble); ctx.lineTo(e.x+s*0.2, e.y-s*0.8+wobble); ctx.fill();
-            }
-
-            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x-s*0.3, eyeY, s*0.25, 0, Math.PI*2); ctx.arc(e.x+s*0.3, eyeY, s*0.25, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = e.slowTimer > 0 ? '#00d8d6' : '#1e272e'; ctx.beginPath(); ctx.arc(e.x-s*0.3, eyeY, s*0.12, 0, Math.PI*2); ctx.arc(e.x+s*0.3, eyeY, s*0.12, 0, Math.PI*2); ctx.fill();
+            marks.forEach(m=>{ ctx.fillStyle=m.isBlood?`rgba(131, 52, 113, ${m.life/300})`:`rgba(30,39,46,${m.life/1000})`; ctx.beginPath(); ctx.ellipse(m.x,m.y,m.sz,m.sz*0.6,0,0,Math.PI*2); ctx.fill(); });
             
-            if (e.slowTimer > 0) { ctx.strokeStyle = 'rgba(0, 216, 214, 0.6)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(e.x, e.y+wobble, s+5, 0, Math.PI*2); ctx.stroke(); }
+            // Дорога
+            ctx.lineJoin='round'; ctx.lineCap='round';
+            ctx.strokeStyle='#7f8fa6'; ctx.lineWidth=36; ctx.beginPath(); ctx.moveTo(waypoints[0].x, waypoints[0].y); for(let i=1;i<waypoints.length;i++) ctx.lineTo(waypoints[i].x, waypoints[i].y); ctx.stroke(); // Тень/бордюр
+            ctx.strokeStyle='#dcdde1'; ctx.lineWidth=28; ctx.stroke(); // Дорога
+            ctx.strokeStyle='#b2bec3'; ctx.lineWidth=20; ctx.setLineDash([12, 12]); ctx.stroke(); ctx.setLineDash([]); // Камни
 
-            let hpW = s * 2.5; let hpY = e.y - s - 15 + wobble;
-            ctx.fillStyle = '#ff3f34'; ctx.fillRect(e.x - hpW/2, hpY, hpW, 5);
-            ctx.fillStyle = '#0be881'; ctx.fillRect(e.x - hpW/2, hpY, hpW * (e.hp / e.maxHp), 5);
+            env.forEach(e=>{
+                if(e.type==='tree') {
+                    ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(e.x+4,e.y+e.sz,e.sz,e.sz*0.5,0,0,Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#10ac84'; ctx.beginPath(); ctx.arc(e.x, e.y, e.sz, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#1dd1a1'; ctx.beginPath(); ctx.arc(e.x-3, e.y-3, e.sz*0.6, 0, Math.PI*2); ctx.fill();
+                } else {
+                    ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(e.x+2,e.y+3,e.sz,e.sz*0.6,0,0,Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#718093'; ctx.beginPath(); ctx.arc(e.x, e.y, e.sz, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#dcdde1'; ctx.beginPath(); ctx.arc(e.x-2, e.y-2, e.sz*0.5, 0, Math.PI*2); ctx.fill();
+                }
+            });
+
+            // Платформы
+            plots.forEach(p=>{
+                ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(p.x,p.y+8,22,12,0,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle=p.occ?'#353b48':'#718093'; ctx.beginPath(); ctx.ellipse(p.x,p.y,20,11,0,0,Math.PI*2); ctx.fill();
+                if(!p.occ && selectedType!=='meteor') { ctx.strokeStyle=(gold>=(selectedType==='magic'?120:selectedType==='tesla'?200:50))?'#10ac84':'#ee5253'; ctx.lineWidth=2; ctx.stroke(); }
+            });
+
+            // ЗАМОК
+            let b=waypoints[waypoints.length-1];
+            ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.ellipse(b.x,b.y+15,65,25,0,0,Math.PI*2); ctx.fill();
+            let grad=ctx.createLinearGradient(0,b.y-60,0,b.y); grad.addColorStop(0,'#718093'); grad.addColorStop(1,'#2f3640'); ctx.fillStyle=grad; ctx.fillRect(b.x-55,b.y-60,110,70); // Стены
+            ctx.fillStyle='#1e272e'; ctx.fillRect(b.x-65,b.y-80,30,40); ctx.fillRect(b.x+35,b.y-80,30,40); // Башни
+            ctx.fillStyle='#ee5253'; ctx.beginPath(); ctx.moveTo(b.x-70,b.y-80); ctx.lineTo(b.x-50,b.y-120); ctx.lineTo(b.x-30,b.y-80); ctx.fill(); ctx.beginPath(); ctx.moveTo(b.x+30,b.y-80); ctx.lineTo(b.x+50,b.y-120); ctx.lineTo(b.x+70,b.y-80); ctx.fill(); // Крыши
+            ctx.fillStyle='#dcdde1'; ctx.fillRect(b.x-15,b.y-20,30,30); ctx.fillStyle='#1e272e'; ctx.beginPath(); ctx.arc(b.x,b.y-20,15,Math.PI,0); ctx.fill(); // Ворота
+        }
+
+        function drawTowers() {
+            towers.forEach(t=>{
+                ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(t.x,t.y+10,18,10,0,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle='#576574'; ctx.fillRect(t.x-15,t.y-15,30,18); ctx.beginPath(); ctx.ellipse(t.x,t.y+3,15,8,0,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle='#8395a7'; ctx.beginPath(); ctx.ellipse(t.x,t.y-15,15,8,0,0,Math.PI*2); ctx.fill();
+
+                ctx.save(); ctx.translate(t.x,t.y-22); ctx.rotate(t.ang);
+                if(t.type==='basic'){
+                    ctx.fillStyle='#222f3e'; ctx.fillRect(-10-t.rec,-6,28+t.lvl*3,12); ctx.fillStyle='#c8d6e5'; ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill();
+                } else if(t.type==='magic'){
+                    let fy=Math.sin(frame*0.1)*3; ctx.shadowBlur=15; ctx.shadowColor='#00d2d3'; ctx.fillStyle='#00d2d3';
+                    ctx.beginPath(); ctx.moveTo(0,-16-t.lvl*2+fy); ctx.lineTo(10+t.lvl,fy); ctx.lineTo(0,16+t.lvl*2+fy); ctx.lineTo(-10-t.lvl,fy); ctx.fill(); ctx.shadowBlur=0;
+                } else {
+                    ctx.shadowBlur=10; ctx.shadowColor='#5f27cd'; ctx.fillStyle='#341f97'; ctx.fillRect(-8,-8,16,16); ctx.fillStyle='#fff'; ctx.fillRect(0,-4,16+t.rec+t.lvl*2,8); ctx.shadowBlur=0;
+                }
+                ctx.restore();
+
+                let ly=t.y-40; ctx.fillStyle='#f1c40f'; ctx.shadowBlur=8; ctx.shadowColor='#f1c40f';
+                for(let i=0;i<t.lvl;i++){ let px=t.x-((t.lvl-1)*5)+(i*10); ctx.beginPath(); ctx.moveTo(px,ly-3); ctx.lineTo(px+3,ly); ctx.lineTo(px,ly+3); ctx.lineTo(px-3,ly); ctx.fill(); } ctx.shadowBlur=0;
+
+                if(selectedPlot && selectedPlot.tower===t) { ctx.strokeStyle='#fff'; ctx.setLineDash([5,5]); ctx.beginPath(); ctx.arc(t.x,t.y-10,t.rng,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]); }
+            });
+        }
+
+        function drawEntities() {
+            enemies.forEach(e=>{
+                let w=Math.sin(frame*(e.type==='boss'?0.1:0.3))*(e.type==='boss'?3:1.5); let s=e.sz;
+                ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(e.x,e.y+s*0.8,s*1.2,s*0.5,0,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle=e.c; ctx.beginPath(); ctx.ellipse(e.x,e.y+w,s,s*1.1,0,0,Math.PI*2); ctx.fill();
+                if(e.slw) { ctx.strokeStyle='rgba(0,210,211,0.6)'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(e.x,e.y+w,s+4,0,Math.PI*2); ctx.stroke(); }
+                ctx.fillStyle='#fff'; ctx.fillRect(e.x-s*0.4,e.y-s*0.3+w,s*0.3,s*0.3); ctx.fillRect(e.x+s*0.1,e.y-s*0.3+w,s*0.3,s*0.3);
+                ctx.fillStyle='#000'; ctx.fillRect(e.x-s*0.3,e.y-s*0.2+w,s*0.15,s*0.15); ctx.fillRect(e.x+s*0.2,e.y-s*0.2+w,s*0.15,s*0.15);
+                let hw=s*2; ctx.fillStyle='#ee5253'; ctx.fillRect(e.x-hw/2,e.y-s-10+w,hw,4); ctx.fillStyle='#10ac84'; ctx.fillRect(e.x-hw/2,e.y-s-10+w,hw*(e.hp/e.mhp),4);
+            });
+
+            lightnings.forEach(l=>{
+                ctx.shadowBlur=15; ctx.shadowColor='#5f27cd'; ctx.strokeStyle=`rgba(95,39,205,${l.life})`; ctx.lineWidth=4;
+                ctx.beginPath(); ctx.moveTo(l.s.x,l.s.y); let mx=(l.s.x+l.e.x)/2+(Math.random()-0.5)*15, my=(l.s.y+l.e.y)/2+(Math.random()-0.5)*15;
+                ctx.lineTo(mx,my); ctx.lineTo(l.e.x,l.e.y); ctx.stroke(); ctx.shadowBlur=0; ctx.strokeStyle=`rgba(255,255,255,${l.life})`; ctx.lineWidth=2; ctx.stroke();
+            });
+
+            bullets.forEach(b=>{
+                let yOff = b.arc ? -b.arc : 0;
+                ctx.fillStyle=b.type==='magic'?'#00d2d3':'#1e272e'; ctx.shadowBlur=b.type==='magic'?10:0; ctx.shadowColor=ctx.fillStyle;
+                ctx.beginPath(); ctx.arc(b.x,b.y+yOff,b.type==='magic'?6:4,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+            });
+
+            particles.forEach(p=>{ctx.fillStyle=p.col; ctx.globalAlpha=Math.max(0,p.life); ctx.beginPath(); ctx.arc(p.x,p.y,p.sz,0,Math.PI*2); ctx.fill();}); ctx.globalAlpha=1;
+            texts.forEach(t=>{ctx.fillStyle=t.col; ctx.globalAlpha=Math.max(0,t.life); ctx.font=`900 ${t.sz}px Montserrat`; ctx.textAlign='center'; ctx.shadowBlur=4; ctx.shadowColor='#000'; ctx.fillText(t.txt,t.x,t.y); ctx.shadowBlur=0;}); ctx.globalAlpha=1;
         }
 
         function draw() {
-            let sx = (Math.random()-0.5)*screenShake; let sy = (Math.random()-0.5)*screenShake;
-            ctx.save(); ctx.translate(sx, sy);
-
-            ctx.fillStyle = '#20bf6b'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.save(); ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake);
+            drawEnv(); drawTowers(); drawEntities();
             
-            scorchMarks.forEach(s => {
-                ctx.fillStyle = s.isBlood ? `rgba(142, 68, 173, ${s.life/400})` : `rgba(30, 39, 46, ${s.life/1000})`;
-                ctx.beginPath(); ctx.ellipse(s.x, s.y, s.size, s.size*0.6, 0, 0, Math.PI*2); ctx.fill();
-            });
-
-            ctx.strokeStyle = '#d1ccc0'; ctx.lineWidth = pathW + 12; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; 
-            ctx.beginPath(); ctx.moveTo(waypoints[0].x, waypoints[0].y); for (let i = 1; i < waypoints.length; i++) ctx.lineTo(waypoints[i].x, waypoints[i].y); ctx.stroke();
-            ctx.strokeStyle = '#a4b0be'; ctx.lineWidth = pathW + 6; ctx.stroke(); 
-            ctx.strokeStyle = '#f1f2f6'; ctx.lineWidth = pathW; ctx.stroke(); 
-            ctx.strokeStyle = '#ced6e0'; ctx.lineWidth = pathW - 10; ctx.setLineDash([15, 10]); ctx.stroke(); ctx.setLineDash([]); 
-
-            buildPlots.forEach(p => {
-                ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(p.x, p.y+8, 26, 13, 0, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = p.occupied ? '#485460' : '#808e9b'; ctx.beginPath(); ctx.ellipse(p.x, p.y, 24, 12, 0, 0, Math.PI*2); ctx.fill();
-                
-                if (!p.occupied && selectedAction && selectedAction !== 'meteor') {
-                    let cost = selectedAction === 'magic' ? 120 : (selectedAction === 'tesla' ? 200 : 50);
-                    ctx.strokeStyle = inGameGold >= cost ? '#0be881' : '#ff3f34'; ctx.lineWidth = 2; ctx.stroke();
-                }
-            });
-
-            let baseW = waypoints[waypoints.length-1];
-            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.ellipse(baseW.x, baseW.y+10, 60, 30, 0, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#485460'; ctx.fillRect(baseW.x-50, baseW.y-50, 100, 60); 
-            ctx.fillStyle = '#1e272e'; ctx.fillRect(baseW.x-60, baseW.y-75, 30, 35); ctx.fillRect(baseW.x+30, baseW.y-75, 30, 35);
-            ctx.fillStyle = '#38ada9'; ctx.beginPath(); ctx.moveTo(baseW.x-65, baseW.y-75); ctx.lineTo(baseW.x-45, baseW.y-110); ctx.lineTo(baseW.x-25, baseW.y-75); ctx.fill(); ctx.beginPath(); ctx.moveTo(baseW.x+25, baseW.y-75); ctx.lineTo(baseW.x+45, baseW.y-110); ctx.lineTo(baseW.x+65, baseW.y-75); ctx.fill();
-
-            towers.forEach(t => drawIsometricTower(ctx, t));
-            
-            // Тени от летающих рисуем ДО врагов
-            enemies.filter(e => !e.isFlying).forEach(e => drawEnemyGoblins(ctx, e));
-
-            shockwaves.forEach(sw => {
-                ctx.strokeStyle = `rgba(255, 255, 255, ${sw.life})`; ctx.lineWidth = 4;
-                ctx.beginPath(); ctx.ellipse(sw.x, sw.y, sw.radius, sw.radius*0.6, 0, 0, Math.PI*2); ctx.stroke();
-            });
-
-            lightnings.forEach(l => {
-                ctx.shadowBlur = 15; ctx.shadowColor = '#575fcf';
-                ctx.strokeStyle = `rgba(95, 39, 205, ${l.life})`; ctx.lineWidth = 4;
-                ctx.beginPath(); ctx.moveTo(l.start.x, l.start.y); 
-                let midX = (l.start.x + l.end.x)/2 + (Math.random()-0.5)*20; let midY = (l.start.y + l.end.y)/2 + (Math.random()-0.5)*20;
-                ctx.lineTo(midX, midY); ctx.lineTo(l.end.x, l.end.y); ctx.stroke();
-                ctx.shadowBlur = 0; ctx.strokeStyle = `rgba(255, 255, 255, ${l.life})`; ctx.lineWidth = 2; ctx.stroke();
-            });
-
-            bullets.forEach(b => {
-                ctx.fillStyle = b.type === 'magic' ? '#00d8d6' : '#f1c40f';
-                ctx.shadowBlur = b.type === 'magic' ? 15 : 5; ctx.shadowColor = ctx.fillStyle;
-                ctx.beginPath(); ctx.arc(b.x, b.y, b.type === 'magic' ? 7 : 4, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
-            });
-
-            // Летающие враги поверх всего
-            enemies.filter(e => e.isFlying).forEach(e => drawEnemyGoblins(ctx, e));
-
-            particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life); ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); }); ctx.globalAlpha = 1.0;
-            floatTexts.forEach(ft => { ctx.fillStyle = ft.color; ctx.globalAlpha = Math.max(0, ft.life); ctx.font = `${ft.isCrit?'900':'bold'} ${ft.size}px Montserrat`; ctx.textAlign = 'center'; ctx.shadowBlur = 4; ctx.shadowColor = '#000'; ctx.fillText(ft.text, ft.x, ft.y); ctx.shadowBlur = 0; }); ctx.globalAlpha = 1.0;
-
-            ctx.restore(); 
-
-            // ПРИЦЕЛ МЕТЕОРИТА
-            if (selectedAction === 'meteor' && inGameGold >= 150) {
-                ctx.fillStyle = 'rgba(232, 65, 24, 0.2)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#fff'; ctx.textAlign='center'; ctx.font='bold 20px Montserrat';
-                ctx.fillText("ТАПНИ В ЛЮБУЮ ТОЧКУ ДЛЯ УДАРА", canvas.width/2, canvas.height/2);
+            if(selectedType==='meteor') {
+                ctx.fillStyle='rgba(238,82,83,0.2)'; ctx.fillRect(0,UI_TOP,canvas.width,PLAY_H);
+                ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.font='900 18px Montserrat'; ctx.fillText("ТАПНИ В ТОЛПУ ВРАГОВ", canvas.width/2, UI_TOP+PLAY_H/2);
             }
-
-            if (gameState === 'GAME_OVER') {
-                ctx.fillStyle = 'rgba(15, 20, 23, 0.9)'; ctx.fillRect(0,0,canvas.width,canvas.height); 
-                ctx.fillStyle = '#ff3f34'; ctx.textAlign='center'; ctx.font='900 44px Montserrat'; ctx.fillText("ЗАМОК ПАЛ", canvas.width/2, canvas.height/2-40); 
-                ctx.fillStyle='#d2dae2'; ctx.font='bold 20px Montserrat'; ctx.fillText(`Волн пережито: ${wave-1}`, canvas.width/2, canvas.height/2+10); 
-                ctx.fillStyle='#f1c40f'; ctx.font='900 26px Montserrat'; ctx.fillText(`В Хаб: +${sessionGlobalCoins} 🪙`, canvas.width/2, canvas.height/2+50); 
-                ctx.globalAlpha=Math.abs(Math.sin(frameCount*0.05)); ctx.fillStyle='#0fb9b1'; ctx.font='bold 18px Montserrat'; ctx.fillText("ТАПНИ ЧТОБЫ РЕВАНШ", canvas.width/2, canvas.height/2+120); ctx.globalAlpha=1.0;
-            }
+            ctx.restore();
             update(); requestAnimationFrame(draw);
         }
 
+        // УПРАВЛЕНИЕ МЕНЮ И ТАПАМИ
+        function openMenu(p) {
+            selectedPlot = p; let m = document.getElementById('upgradeMenu'); m.style.display='flex';
+            let mx=p.x, my=p.y-40; if(mx<70) mx=70; if(mx>canvas.width-70) mx=canvas.width-70; if(my<UI_TOP+50) my=p.y+60;
+            m.style.left=`${mx}px`; m.style.top=`${my}px`;
+            let t=p.t, bU=document.getElementById('btn-up'); document.getElementById('btn-sell').innerText=`ПРОДАТЬ (${Math.floor(t.cost*0.7)})`;
+            if(t.lvl>=3){ bU.innerText='МАКСИМУМ'; bU.style.opacity=0.5; } else { bU.innerText=`АП (${t.bc*t.lvl})`; bU.style.opacity=1; }
+        }
+        function closeMenu() { selectedPlot=null; document.getElementById('upgradeMenu').style.display='none'; }
+
+        window.upgradeTower = function() {
+            if(!selectedPlot || selectedPlot.t.lvl>=3) return;
+            let t=selectedPlot.t, c=t.bc*t.lvl;
+            if(gold>=c) { gold-=c; t.cost+=c; t.lvl++; t.dmg=Math.floor(t.dmg*1.5); t.rng+=10; t.fr=Math.max(10,Math.floor(t.fr*0.8)); updateHUD(); play('shoot',0.2,0.5); explode(t.x,t.y,'#f1c40f',1.5); openMenu(selectedPlot); }
+            else spawnTxt(t.x,t.y-40,"НЕТ ЗОЛОТА!","#ee5253",16);
+        }
+        window.sellTower = function() {
+            if(!selectedPlot) return; let t=selectedPlot.t, rf=Math.floor(t.cost*0.7); gold+=rf; updateHUD(); spawnTxt(t.x,t.y-20,`+${rf}g`,"#f1c40f"); play('boom',0.1,2);
+            towers.splice(towers.indexOf(t),1); selectedPlot.occ=false; selectedPlot.t=null; closeMenu();
+        }
+
+        window.startGame = function() { document.getElementById('tutOverlay').style.display='none'; initMap(); resetGame(); }
+        window.resetGame = function() { document.getElementById('goOverlay').style.display='none'; initMap(); resetGame(); }
+
         window.addEventListener('touchstart', (e) => {
-            initWebAudio();
-            if (e.target.id === 'backBtn' || e.target.id === 'speedBtn' || e.target.closest('#bottomUI') || e.target.closest('#towerMenu') || document.getElementById('tutorialOverlay').style.display === 'flex') return;
-
-            if (gameState === 'GAME_OVER') { resetGame(); document.getElementById('bottomUI').style.display = 'flex'; return; }
-
-            if (gameState === 'PLAYING') {
-                const touch = e.touches[0]; let tx = touch.clientX; let ty = touch.clientY;
-                if(ty < 60 || ty > canvas.height - 100) return; 
-
-                // ПРИМЕНЕНИЕ МЕТЕОРИТА
-                if (selectedAction === 'meteor') {
-                    if (inGameGold >= 150) { castMeteor(tx, ty); } 
-                    else { createFloatText(tx, ty-30, "НЕТ ЗОЛОТА!", "#ff3f34", 22, true); selectedAction = 'basic'; document.querySelectorAll('.build-btn').forEach(b => b.classList.remove('active')); document.getElementById('btn-basic').classList.add('active'); }
-                    return;
-                }
-
-                let clickedPlot = null;
-                buildPlots.forEach(p => { if (Math.hypot(tx - p.x, ty - p.y) < 30) clickedPlot = p; });
-
-                if (clickedPlot) {
-                    if (clickedPlot.occupied) {
-                        openTowerMenu(clickedPlot);
-                    } else {
-                        closeTowerMenu();
-                        let cost = selectedAction === 'tesla' ? 200 : (selectedAction === 'magic' ? 120 : 50);
-                        if (inGameGold >= cost) {
-                            inGameGold -= cost; updateUI(); clickedPlot.occupied = true;
-                            let tData = { x: clickedPlot.x, y: clickedPlot.y, angle: 0, recoil: 0, cooldown: 0, type: selectedAction, level: 1, baseCost: cost, totalCost: cost };
-                            if (selectedAction === 'basic') { tData.range = 140; tData.fireRate = 35; tData.damage = 15; }
-                            else if (selectedAction === 'magic') { tData.range = 120; tData.fireRate = 100; tData.damage = 40; }
-                            else { tData.range = 100; tData.fireRate = 80; tData.damage = 25; } 
-                            
-                            towers.push(tData); clickedPlot.tower = tData;
-                            playSFX('shoot', 0.1, 0.5); createExplosion(clickedPlot.x, clickedPlot.y, '#f1f2f6', 2); 
-                        } else { createFloatText(clickedPlot.x, clickedPlot.y-30, "НЕТ ЗОЛОТА!", "#ff3f34", 22, true); }
-                    }
-                } else { closeTowerMenu(); }
+            initAudio(); if(e.target.tagName==='BUTTON' || e.target.closest('#bottomBar') || e.target.closest('#upgradeMenu') || gameState!=='PLAYING') return;
+            let tx = e.touches[0].clientX, ty = e.touches[0].clientY;
+            
+            if(selectedType==='meteor') {
+                if(ty<UI_TOP || ty>UI_BOTTOM) return;
+                if(gold>=150) {
+                    gold-=150; updateHUD(); selectedType='basic'; document.querySelectorAll('.build-card').forEach(c=>c.classList.remove('active')); document.getElementById('bottomBar').children[0].classList.add('active');
+                    spawnTxt(tx,ty-50,"УДАР!","#ee5253",24); setTimeout(()=>{ if(gameState!=='PLAYING')return; explode(tx,ty,'#ff9f43',4); enemies.forEach(e=>{if(Math.hypot(e.x-tx,e.y-ty)<120){e.hp-=600; if(e.hp<=0) kill(e);}}); }, 400);
+                } else { spawnTxt(tx,ty-20,"НЕТ ЗОЛОТА!","#ee5253",20); } return;
             }
-        }, { passive: false });
 
-        draw(); tg.ready();
+            let cp = null; plots.forEach(p=>{ if(Math.hypot(tx-p.x, ty-p.y)<25) cp=p; });
+            if(cp) {
+                if(cp.occ) openMenu(cp);
+                else {
+                    closeMenu(); let c = selectedType==='tesla'?200:(selectedType==='magic'?120:50);
+                    if(gold>=c) {
+                        gold-=c; updateHUD(); cp.occ=true;
+                        let t = {x:cp.x, y:cp.y, ang:0, rec:0, cd:0, type:selectedType, lvl:1, bc:c, cost:c};
+                        if(selectedType==='basic'){t.rng=120; t.fr=40; t.dmg=20;} else if(selectedType==='magic'){t.rng=100; t.fr=100; t.dmg=45;} else{t.rng=90; t.fr=80; t.dmg=30;}
+                        towers.push(t); cp.t=t; play('shoot',0.1,0.5); explode(cp.x,cp.y,'#dcdde1',1.5);
+                    } else spawnTxt(cp.x,cp.y-30,"НЕТ ЗОЛОТА!","#ee5253",20);
+                }
+            } else closeMenu();
+        }, {passive:false});
+
+        initMap(); draw(); tg.ready();
     </script>
 </body>
 </html>
