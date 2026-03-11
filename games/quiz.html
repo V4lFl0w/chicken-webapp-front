@@ -24,9 +24,17 @@
         .coins { color: #ffcc00; font-size: 16px; }
         .lives { font-size: 14px; letter-spacing: 2px; }
 
+        /* ЭКРАН ЗАГРУЗКИ */
+        #loadingScreen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #0a0a12; z-index: 50; display: flex; justify-content: center; align-items: center;
+            font-size: 18px; font-weight: bold; color: #38ef7d;
+        }
+
         /* ИГРОВОЕ ПОЛЕ */
         #gameContainer {
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            display: none; /* Скрыто до загрузки вопросов */
+            flex-direction: column; justify-content: center; align-items: center;
             height: 100vh; padding: 80px 20px 20px; box-sizing: border-box;
             background: radial-gradient(circle at center, #151522 0%, #0a0a12 100%);
         }
@@ -36,7 +44,7 @@
             background: #151522; border: 2px solid rgba(56, 239, 125, 0.3);
             border-radius: 16px; padding: 25px 20px; width: 100%; max-width: 400px;
             text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            position: relative; overflow: hidden; margin-bottom: 20px;
+            position: relative; overflow: hidden; margin-bottom: 15px;
         }
         .question-text { font-size: 18px; font-weight: 700; line-height: 1.5; color: #fff; min-height: 80px; display: flex; align-items: center; justify-content: center; }
         
@@ -44,6 +52,16 @@
         .timer-bar-container { width: 100%; height: 6px; background: #333; position: absolute; bottom: 0; left: 0; }
         .timer-bar { height: 100%; background: linear-gradient(90deg, #11998e, #38ef7d); width: 100%; transition: width 1s linear, background-color 0.3s; }
         .timer-urgent { background: #ff4757 !important; }
+
+        /* ПАНЕЛЬ ПОДСКАЗОК */
+        .tools-panel { width: 100%; max-width: 400px; display: flex; justify-content: flex-end; margin-bottom: 15px; }
+        .hint-btn { 
+            background: rgba(255, 204, 0, 0.1); border: 1px solid #ffcc00; color: #ffcc00; 
+            padding: 8px 15px; border-radius: 8px; font-weight: 900; font-size: 12px; cursor: pointer; 
+            display: flex; align-items: center; gap: 5px; box-shadow: 0 4px 0 rgba(255, 204, 0, 0.4); transition: 0.1s;
+        }
+        .hint-btn:active { transform: translateY(4px); box-shadow: 0 0 0 transparent; }
+        .hint-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; transform: none; }
 
         /* КНОПКИ ОТВЕТОВ */
         .answers-grid { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 400px; }
@@ -84,11 +102,18 @@
         </div>
     </div>
 
+    <div id="loadingScreen">Загрузка вопросов...</div>
+
     <div id="gameContainer">
         <div class="question-card">
-            <div class="question-text" id="questionText">Загрузка вопроса...</div>
+            <div class="question-text" id="questionText">Вопрос загружается...</div>
             <div class="timer-bar-container"><div class="timer-bar" id="timerBar"></div></div>
         </div>
+        
+        <div class="tools-panel">
+            <button class="hint-btn" id="btn5050" onclick="use5050()">💡 50/50 (-5 🪙)</button>
+        </div>
+
         <div class="answers-grid" id="answersGrid">
             </div>
     </div>
@@ -113,7 +138,7 @@
         const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
         let nickname = user.username || user.first_name || "Игрок";
 
-        // БАЗА ВОПРОСОВ (Можно расширять)
+        // РЕЗЕРВНАЯ БАЗА ВОПРОСОВ
         const questionPool = [
             { q: "Какой химический элемент назван в честь злого подземного духа?", a: ["Кобальт", "Никель", "Свинец", "Вольфрам"], c: 0 },
             { q: "Как называется самая яркая звезда в созвездии Большого Пса?", a: ["Сириус", "Вега", "Полярная", "Бетельгейзе"], c: 0 },
@@ -136,12 +161,12 @@
         let correctAnswersCount = 0;
         let lives = 3;
         
-        const TIME_LIMIT = 15; // 15 секунд на вопрос
+        const TIME_LIMIT = 15;
         let timeLeft = TIME_LIMIT;
         let timerInterval;
         let isAnswering = false;
+        let hintUsedOnCurrent = false;
 
-        // Перемешивание массива (Фишер-Йетс)
         function shuffleArray(array) {
             let curId = array.length;
             while (0 !== curId) {
@@ -154,20 +179,40 @@
             return array;
         }
 
+        // Загрузка с сервера с фоллбеком на локальную базу
+        async function fetchQuestions() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/get_quiz_questions`);
+                const data = await res.json();
+                if (data && data.length > 5) return data;
+            } catch(e) { console.log("Используется локальная база вопросов."); }
+            return questionPool;
+        }
+
         function updateUI() {
             document.getElementById('scoreVal').innerText = score;
             document.getElementById('coinsVal').innerText = coins;
             document.getElementById('livesUi').innerText = '❤️'.repeat(lives) + '💔'.repeat(3 - lives);
+
+            const btnHint = document.getElementById('btn5050');
+            if (coins >= 5 && !hintUsedOnCurrent && !isAnswering) { btnHint.disabled = false; } 
+            else { btnHint.disabled = true; }
         }
 
-        function initGame() {
+        async function initGame() {
             document.getElementById('gameOverOverlay').style.display = 'none';
+            document.getElementById('gameContainer').style.display = 'none';
+            document.getElementById('loadingScreen').style.display = 'flex';
+            
             score = 0; coins = 0; lives = 3; correctAnswersCount = 0; currentQuestionIndex = 0;
             updateUI();
             
-            // Клонируем и мешаем вопросы
-            questions = JSON.parse(JSON.stringify(questionPool));
+            const rawQuestions = await fetchQuestions();
+            questions = JSON.parse(JSON.stringify(rawQuestions));
             shuffleArray(questions);
+            
+            document.getElementById('loadingScreen').style.display = 'none';
+            document.getElementById('gameContainer').style.display = 'flex';
             
             loadQuestion();
         }
@@ -178,10 +223,11 @@
             }
 
             isAnswering = false;
+            hintUsedOnCurrent = false;
             let qData = questions[currentQuestionIndex];
             document.getElementById('questionText').innerText = qData.q;
 
-            // Подготовка вариантов ответов
+            // Добавляем флаг правильности для 50/50
             let options = qData.a.map((text, index) => { return { text: text, isCorrect: index === qData.c }; });
             shuffleArray(options);
 
@@ -192,11 +238,30 @@
                 let btn = document.createElement('button');
                 btn.className = 'answer-btn';
                 btn.innerText = opt.text;
+                btn.dataset.correct = opt.isCorrect; // Сохраняем стейт в DOM
                 btn.onclick = () => handleAnswer(btn, opt.isCorrect);
                 grid.appendChild(btn);
             });
 
+            updateUI();
             startTimer();
+        }
+
+        function use5050() {
+            if (coins < 5 || hintUsedOnCurrent || isAnswering) return;
+            
+            coins -= 5; 
+            hintUsedOnCurrent = true; 
+            updateUI();
+            
+            let grid = document.getElementById('answersGrid');
+            let wrongBtns = Array.from(grid.children).filter(b => b.dataset.correct === "false");
+            
+            shuffleArray(wrongBtns);
+            
+            // Отключаем и делаем прозрачными 2 неверных ответа
+            wrongBtns[0].style.opacity = '0.3'; wrongBtns[0].disabled = true;
+            wrongBtns[1].style.opacity = '0.3'; wrongBtns[1].disabled = true;
         }
 
         function startTimer() {
@@ -224,24 +289,22 @@
             if (isAnswering) return;
             isAnswering = true;
             clearInterval(timerInterval);
+            document.getElementById('btn5050').disabled = true;
 
-            // Блокируем все кнопки
             const buttons = document.querySelectorAll('.answer-btn');
             buttons.forEach(b => b.disabled = true);
 
             if (isCorrect) {
                 btn.classList.add('correct');
-                let timeBonus = Math.floor(timeLeft * 10); // Чем быстрее, тем больше очков
+                let timeBonus = Math.floor(timeLeft * 10);
                 score += (100 + timeBonus);
-                coins += 1; // 1 монета за правильный ответ
+                coins += 1;
                 correctAnswersCount++;
             } else {
                 btn.classList.add('wrong');
                 lives--;
-                // Подсвечиваем правильный
                 buttons.forEach(b => {
-                    let optText = questions[currentQuestionIndex].a[questions[currentQuestionIndex].c];
-                    if (b.innerText === optText) b.classList.add('correct');
+                    if (b.dataset.correct === "true") b.classList.add('correct');
                 });
             }
 
@@ -250,7 +313,7 @@
             setTimeout(() => {
                 currentQuestionIndex++;
                 loadQuestion();
-            }, 1500); // Пауза перед следующим вопросом
+            }, 1500);
         }
 
         function handleTimeOut() {
@@ -258,12 +321,12 @@
             isAnswering = true;
             lives--;
             updateUI();
+            document.getElementById('btn5050').disabled = true;
 
             const buttons = document.querySelectorAll('.answer-btn');
             buttons.forEach(b => {
                 b.disabled = true;
-                let optText = questions[currentQuestionIndex].a[questions[currentQuestionIndex].c];
-                if (b.innerText === optText) b.classList.add('correct');
+                if (b.dataset.correct === "true") b.classList.add('correct');
             });
 
             setTimeout(() => {
@@ -284,7 +347,6 @@
             document.getElementById('finalCoins').innerText = coins;
             document.getElementById('correctCount').innerText = `${correctAnswersCount} / ${questions.length}`;
 
-            // Отправка результата на бэкенд
             try {
                 await fetch(`${BACKEND_URL}/save_score`, {
                     method: 'POST',
@@ -294,7 +356,6 @@
             } catch(e) { console.error("Ошибка сохранения:", e); }
         }
 
-        // Старт при загрузке
         initGame();
 
     </script>
