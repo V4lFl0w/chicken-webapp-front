@@ -9,9 +9,13 @@
     <style>
         body { margin: 0; padding: 0; background-color: #030305; color: white; font-family: 'Montserrat', sans-serif; overflow: hidden; touch-action: none; user-select: none; }
         
-        #topUI { position: absolute; top: 0; left: 0; width: 100%; height: 60px; background: rgba(5, 5, 10, 0.6); backdrop-filter: blur(10px); display: flex; justify-content: space-between; align-items: center; padding: 0 15px; box-sizing: border-box; z-index: 100; border-bottom: 1px solid rgba(255, 51, 102, 0.4); box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        #topUI { position: absolute; top: 0; left: 0; width: 100%; height: 60px; background: rgba(5, 5, 10, 0.8); backdrop-filter: blur(10px); display: flex; justify-content: space-between; align-items: center; padding: 0 15px; box-sizing: border-box; z-index: 100; border-bottom: 2px solid rgba(0, 255, 204, 0.4); box-shadow: 0 5px 20px rgba(0,0,0,0.8); }
         #backBtn { background: rgba(255, 255, 255, 0.05); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 8px 12px; font-weight: 900; font-size: 12px; cursor: pointer; text-transform: uppercase; }
-        .timer { font-size: 22px; font-weight: 900; color: #fff; text-shadow: 0 0 10px rgba(255,255,255,0.5); letter-spacing: 2px; }
+        
+        .top-center { display: flex; flex-direction: column; align-items: center; }
+        .timer { font-size: 20px; font-weight: 900; color: #fff; text-shadow: 0 0 10px rgba(255,255,255,0.5); letter-spacing: 1px; }
+        .score-ui { font-size: 12px; color: #ffcc00; font-weight: bold; }
+        
         .enemy-info { font-size: 10px; color: #ff3366; font-weight: 900; text-align: right; text-transform: uppercase; letter-spacing: 1px; }
         .enemy-info span { font-size: 14px; color: #fff; text-shadow: 0 0 8px #ff3366; }
 
@@ -25,26 +29,31 @@
         .mana-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #00ffcc, #0099ff); transition: width 0.1s linear; box-shadow: 0 0 10px #00ffcc; }
 
         .cards-deck { display: flex; justify-content: space-around; width: 100%; gap: 10px; perspective: 500px; }
-        .card { flex: 1; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; height: 80px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); opacity: 0.4; filter: grayscale(100%); transform-style: preserve-3d; }
-        .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 100%); border-radius: 12px; pointer-events: none; }
-        .card.ready { opacity: 1; filter: grayscale(0%); border-color: rgba(0, 255, 204, 0.5); box-shadow: 0 5px 15px rgba(0, 255, 204, 0.15); }
-        .card.selected { transform: translateY(-15px) rotateX(10deg); border-color: #00ffcc; box-shadow: 0 10px 25px rgba(0, 255, 204, 0.4); background: rgba(0, 255, 204, 0.1); }
-        .card-icon { font-size: 28px; margin-bottom: 4px; filter: drop-shadow(0 0 5px rgba(255,255,255,0.5)); }
-        .card-cost { position: absolute; top: -10px; left: -10px; background: #000; border-radius: 50%; width: 24px; height: 24px; display: flex; justify-content: center; align-items: center; font-size: 13px; font-weight: 900; color: #00ffcc; border: 2px solid #00ffcc; box-shadow: 0 0 10px rgba(0,255,204,0.5); }
+        .card { flex: 1; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; height: 80px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; transition: all 0.2s; opacity: 0.4; filter: grayscale(100%); }
+        .card.ready { opacity: 1; filter: grayscale(0%); border-color: rgba(0, 255, 204, 0.5); box-shadow: 0 5px 15px rgba(0, 255, 204, 0.1); }
+        .card.selected { transform: translateY(-10px); border-color: #00ffcc; box-shadow: 0 10px 25px rgba(0, 255, 204, 0.4); background: rgba(0, 255, 204, 0.15); }
+        .card-icon { font-size: 28px; margin-bottom: 4px; }
+        .card-cost { position: absolute; top: -8px; left: -8px; background: #111; border-radius: 50%; width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; font-size: 12px; font-weight: 900; color: #00ffcc; border: 2px solid #00ffcc; }
         .card-name { font-size: 9px; font-weight: 900; color: #fff; letter-spacing: 0.5px; }
 
         .scanlines { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); background-size: 100% 4px, 3px 100%; pointer-events: none; z-index: 50; }
 
         #gameOverOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(3, 3, 5, 0.95); z-index: 200; display: none; flex-direction: column; justify-content: center; align-items: center; }
         h1 { font-size: 40px; margin-bottom: 10px; text-transform: uppercase; text-align: center; }
-        .restart-btn { margin-top: 30px; background: rgba(255,255,255,0.1); color: #fff; font-size: 18px; font-weight: 900; padding: 15px 40px; border: 1px solid #fff; border-radius: 12px; cursor: pointer; text-transform: uppercase; }
+        .lootbox { font-size: 80px; margin: 20px 0; filter: drop-shadow(0 0 20px #ffcc00); animation: float 2s infinite ease-in-out; }
+        @keyframes float { 0% {transform: translateY(0);} 50% {transform: translateY(-15px);} 100% {transform: translateY(0);} }
+        .result-text { font-size: 20px; font-weight: bold; color: #fff; margin-bottom: 5px; }
+        .restart-btn { margin-top: 30px; background: #00ffcc; color: #000; font-size: 18px; font-weight: 900; padding: 15px 40px; border: none; border-radius: 12px; cursor: pointer; text-transform: uppercase; box-shadow: 0 5px 15px rgba(0,255,204,0.4); }
     </style>
 </head>
 <body>
 
     <div id="topUI">
         <button id="backBtn" onclick="window.location.href='../index.html'">◀ Выход</button>
-        <div class="timer" id="gameTimer">SYSTEM</div>
+        <div class="top-center">
+            <div class="timer" id="gameTimer">3:00</div>
+            <div class="score-ui"><span id="sessionCoins">0</span> 🪙</div>
+        </div>
         <div class="enemy-info">ХОСТ:<br><span>CORP_AI</span></div>
     </div>
 
@@ -64,6 +73,11 @@
 
     <div id="gameOverOverlay">
         <h1 id="goTitle"></h1>
+        <div id="lootboxContainer" style="display: none;">
+            <div class="lootbox">📦</div>
+            <div class="result-text" style="color: #ffcc00;">КРИПТО-СУНДУК ПОЛУЧЕН!</div>
+        </div>
+        <div class="result-text" style="margin-top: 20px;">Добыто монет: <span id="finalCoins" style="color:#ffcc00">0</span> 🪙</div>
         <button class="restart-btn" onclick="location.reload()">НОВАЯ СЕССИЯ</button>
     </div>
 
@@ -71,15 +85,21 @@
         const tg = window.Telegram.WebApp; tg.expand(); tg.disableVerticalSwipes && tg.disableVerticalSwipes();
         tg.setHeaderColor('#030305');
 
+        const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Hacker" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+
         const canvas = document.getElementById('gameCanvas'); const ctx = canvas.getContext('2d');
         const UI_TOP = 60; const UI_BOT = 145;
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
         const W = canvas.width; const H = canvas.height; const midY = (UI_TOP + (H - UI_BOT)) / 2;
 
         let gameState = 'PLAYING';
-        let frameCount = 0; let mana = 5; const MAX_MANA = 10; const MANA_REGEN = 0.025;
-        let enemyMana = 5; // У ИИ своя мана
-        let selectedCard = null;
+        let frameCount = 0; let mana = 5; const MAX_MANA = 10; const MANA_REGEN = 0.02;
+        let enemyMana = 5; let selectedCard = null;
+        let sessionCoins = 0;
+        let timeLeft = 180; // 3 минуты (180 секунд)
+        let lastTimeUpdate = Date.now();
+        let gridOffsetY = 0; // Для движения фона
 
         const deck = [
             { id: 'tank', name: 'ТРОЯН', cost: 5, icon: '👾', type: 'tank' },
@@ -88,23 +108,22 @@
             { id: 'laser', name: 'ROOTKIT', cost: 4, icon: '⚡', type: 'spell' }
         ];
 
-        // ХАРАКТЕРИСТИКИ ЮНИТОВ
         const UNIT_STATS = {
-            tank: { hp: 1200, spd: 0.5, dmg: 60, rng: 20, atkSpd: 60, buildsOnly: true, sz: 14, shape: 'square' },
-            shooter: { hp: 250, spd: 1.0, dmg: 25, rng: 120, atkSpd: 40, buildsOnly: false, sz: 10, shape: 'triangle' },
-            swarm: { hp: 80, spd: 1.8, dmg: 10, rng: 15, atkSpd: 20, buildsOnly: false, sz: 6, shape: 'circle' }
+            tank: { hp: 1400, spd: 0.6, dmg: 70, rng: 25, atkSpd: 60, buildsOnly: true, icon: '👾' },
+            shooter: { hp: 300, spd: 1.0, dmg: 30, rng: 120, atkSpd: 40, buildsOnly: false, icon: '🛰️' },
+            swarm: { hp: 100, spd: 1.5, dmg: 15, rng: 20, atkSpd: 25, buildsOnly: false, icon: '🦠' }
         };
 
-        let nodes = []; let units = []; let projectiles = []; let effects = [];
+        let nodes = []; let units = []; let projectiles = []; let floatTexts = []; let effects = [];
 
         function initMap() {
             nodes = [
                 { id: 'p_l', x: W*0.25, y: H - UI_BOT - 120, hp: 1500, maxHp: 1500, team: 'player', type: 'side' },
                 { id: 'p_r', x: W*0.75, y: H - UI_BOT - 120, hp: 1500, maxHp: 1500, team: 'player', type: 'side' },
-                { id: 'p_m', x: W*0.5,  y: H - UI_BOT - 30,  hp: 3000, maxHp: 3000, team: 'player', type: 'main' },
+                { id: 'p_m', x: W*0.5,  y: H - UI_BOT - 30,  hp: 2500, maxHp: 2500, team: 'player', type: 'main' },
                 { id: 'e_l', x: W*0.25, y: UI_TOP + 100, hp: 1500, maxHp: 1500, team: 'enemy', type: 'side' },
                 { id: 'e_r', x: W*0.75, y: UI_TOP + 100, hp: 1500, maxHp: 1500, team: 'enemy', type: 'side' },
-                { id: 'e_m', x: W*0.5,  y: UI_TOP + 30,  hp: 3000, maxHp: 3000, team: 'enemy', type: 'main' }
+                { id: 'e_m', x: W*0.5,  y: UI_TOP + 30,  hp: 2500, maxHp: 2500, team: 'enemy', type: 'main' }
             ];
         }
         initMap();
@@ -125,24 +144,23 @@
             });
         }
 
-        // СПАВН ЮНИТА
-        function spawnUnit(type, x, y, team) {
-            let stats = UNIT_STATS[type];
-            let color = team === 'player' ? '#00ffcc' : '#ff3366';
-            if (type === 'swarm') {
-                for(let i=0; i<3; i++) units.push({ x: x + (Math.random()*20-10), y: y + (Math.random()*20-10), team, type, color, hp: stats.hp, maxHp: stats.hp, spd: stats.spd, dmg: stats.dmg, rng: stats.rng, atkSpd: stats.atkSpd, cd: 0, buildsOnly: stats.buildsOnly, sz: stats.sz, shape: stats.shape });
-            } else {
-                units.push({ x, y, team, type, color, hp: stats.hp, maxHp: stats.hp, spd: stats.spd, dmg: stats.dmg, rng: stats.rng, atkSpd: stats.atkSpd, cd: 0, buildsOnly: stats.buildsOnly, sz: stats.sz, shape: stats.shape });
-            }
-            createEffect(x, y, color, 15);
-        }
-
+        function spawnText(x, y, txt, col) { floatTexts.push({x, y, txt, col, life: 1, vy: -1}); }
         function createEffect(x, y, color, size) { effects.push({x, y, color, r: 5, maxR: size, life: 1}); }
 
-        // ИСКУССТВЕННЫЙ ИНТЕЛЛЕКТ ВРАГА
+        function spawnUnit(type, x, y, team) {
+            let s = UNIT_STATS[type];
+            let c = team === 'player' ? '#00ffcc' : '#ff3366';
+            if (type === 'swarm') {
+                for(let i=0; i<3; i++) units.push({ x: x+(Math.random()*30-15), y: y+(Math.random()*30-15), team, type, c, hp: s.hp, maxHp: s.hp, spd: s.spd, dmg: s.dmg, rng: s.rng, atkSpd: s.atkSpd, cd: 0, bOnly: s.buildsOnly, icon: s.icon });
+            } else {
+                units.push({ x, y, team, type, c, hp: s.hp, maxHp: s.hp, spd: s.spd, dmg: s.dmg, rng: s.rng, atkSpd: s.atkSpd, cd: 0, bOnly: s.buildsOnly, icon: s.icon });
+            }
+            createEffect(x, y, c, 20);
+        }
+
         function enemyAI() {
             if (enemyMana < MAX_MANA) enemyMana += MANA_REGEN;
-            if (frameCount % 60 === 0 && Math.random() > 0.5) {
+            if (frameCount % 90 === 0 && Math.random() > 0.4) { // Умный ИИ копит ману
                 let types = ['tank', 'shooter', 'swarm'];
                 let typeToSpawn = types[Math.floor(Math.random() * types.length)];
                 let cost = deck.find(c => c.type === typeToSpawn).cost;
@@ -150,16 +168,25 @@
                 if (enemyMana >= cost) {
                     enemyMana -= cost;
                     let spawnX = Math.random() > 0.5 ? W*0.25 : W*0.75;
-                    let spawnY = UI_TOP + 140; // Чуть ниже вражеских боковых башен
+                    let spawnY = UI_TOP + 150; 
                     spawnUnit(typeToSpawn, spawnX, spawnY, 'enemy');
                 }
             }
         }
 
-        // ЛОГИКА ЮНИТОВ И БОЕВОЙ ДВИЖОК
         function updateLogic() {
             if (gameState !== 'PLAYING') return;
             frameCount++;
+            
+            // Таймер
+            let now = Date.now();
+            if (now - lastTimeUpdate > 1000) {
+                timeLeft--; lastTimeUpdate = now;
+                let m = Math.floor(timeLeft / 60); let s = timeLeft % 60;
+                document.getElementById('gameTimer').innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if(timeLeft <= 0) resolveMatchByTime();
+            }
+
             if (mana < MAX_MANA) {
                 mana += MANA_REGEN; if (mana > MAX_MANA) mana = MAX_MANA;
                 document.getElementById('manaBar').style.width = `${(mana / MAX_MANA) * 100}%`; document.getElementById('manaVal').innerText = Math.floor(mana);
@@ -168,13 +195,11 @@
 
             enemyAI();
 
-            // ПОИСК ПУТИ И АТАКА
             units.forEach(u => {
                 if (u.cd > 0) u.cd--;
                 let target = null; let minDist = Infinity;
-
-                // Ищем врагов
-                let enemiesArray = u.buildsOnly ? nodes : nodes.concat(units);
+                let enemiesArray = u.bOnly ? nodes : nodes.concat(units);
+                
                 enemiesArray.filter(e => e.team !== u.team).forEach(e => {
                     let d = Math.hypot(e.x - u.x, e.y - u.y);
                     if (d < minDist) { minDist = d; target = e; }
@@ -182,67 +207,62 @@
 
                 if (target) {
                     if (minDist <= u.rng) {
-                        // АТАКА
                         if (u.cd <= 0) {
                             u.cd = u.atkSpd;
                             if (u.type === 'shooter') {
-                                projectiles.push({ x: u.x, y: u.y, tx: target.x, ty: target.y, t: target, spd: 8, dmg: u.dmg, color: u.color });
+                                projectiles.push({ x: u.x, y: u.y, tx: target.x, ty: target.y, t: target, spd: 8, dmg: u.dmg, c: u.c });
                             } else {
                                 target.hp -= u.dmg;
-                                createEffect(target.x, target.y, '#fff', 8);
+                                createEffect(target.x, target.y, '#fff', 10);
                             }
                         }
                     } else {
-                        // ДВИЖЕНИЕ С УЧЕТОМ МОСТОВ
                         let tx = target.x; let ty = target.y;
                         let onPlayerSide = u.y > midY; let targetOnEnemySide = target.y < midY;
                         
                         if ((onPlayerSide && targetOnEnemySide) || (!onPlayerSide && !targetOnEnemySide)) {
                             let b1 = W*0.25; let b2 = W*0.75;
                             let targetBridge = Math.abs(u.x - b1) < Math.abs(u.x - b2) ? b1 : b2;
-                            // Если не на мосту - идем к мосту
                             if (Math.abs(u.x - targetBridge) > 15 && Math.abs(u.y - midY) > 20) {
-                                tx = targetBridge; ty = u.y; // Идем по горизонтали к мосту
+                                tx = targetBridge; ty = u.y; 
                             }
                         }
 
                         let angle = Math.atan2(ty - u.y, tx - u.x);
-                        u.x += Math.cos(angle) * u.spd;
-                        u.y += Math.sin(angle) * u.spd;
+                        u.x += Math.cos(angle) * u.spd; u.y += Math.sin(angle) * u.spd;
                     }
                 }
             });
 
-            // Снаряды
             projectiles.forEach(p => {
                 let d = Math.hypot(p.tx - p.x, p.ty - p.y);
                 if (d < p.spd) {
                     p.dead = true;
-                    if(p.t.hp !== undefined) { p.t.hp -= p.dmg; createEffect(p.tx, p.ty, p.color, 10); }
-                } else {
-                    p.x += (p.tx - p.x)/d * p.spd; p.y += (p.ty - p.y)/d * p.spd;
-                }
+                    if(p.t.hp !== undefined) { p.t.hp -= p.dmg; createEffect(p.tx, p.ty, p.c, 12); }
+                } else { p.x += (p.tx - p.x)/d * p.spd; p.y += (p.ty - p.y)/d * p.spd; }
             });
 
-            // Очистка мертвых
             units = units.filter(u => u.hp > 0);
             projectiles = projectiles.filter(p => !p.dead);
-            effects.forEach(e => { e.r += (e.maxR - e.r)*0.2; e.life -= 0.1; });
-            effects = effects.filter(e => e.life > 0);
+            effects.forEach(e => { e.r += (e.maxR - e.r)*0.2; e.life -= 0.05; }); effects = effects.filter(e => e.life > 0);
+            floatTexts.forEach(t=>{ t.y+=t.vy; t.life-=0.02; }); floatTexts = floatTexts.filter(t=>t.life>0);
 
-            // Проверка смерти узлов
             nodes.forEach(n => {
                 if (n.hp <= 0 && !n.dead) {
                     n.dead = true;
-                    createEffect(n.x, n.y, n.team==='player'?'#00ffcc':'#ff3366', 60);
-                    if (n.type === 'main') {
-                        gameState = 'GAME_OVER';
-                        let win = n.team === 'enemy';
-                        let ov = document.getElementById('gameOverOverlay');
-                        ov.style.display = 'flex';
-                        document.getElementById('goTitle').innerText = win ? 'СИСТЕМА ВЗЛОМАНА' : 'КРИТИЧЕСКИЙ СБОЙ';
-                        document.getElementById('goTitle').style.color = win ? '#00ffcc' : '#ff3366';
-                        document.getElementById('goTitle').style.textShadow = win ? '0 0 20px #00ffcc' : '0 0 20px #ff3366';
+                    createEffect(n.x, n.y, n.team==='player'?'#00ffcc':'#ff3366', 80);
+                    
+                    // Награды за снос вражеских башен
+                    if (n.team === 'enemy') {
+                        if (n.type === 'side') {
+                            sessionCoins += 10; spawnText(n.x, n.y-20, "+10 🪙", "#ffcc00");
+                        } else if (n.type === 'main') {
+                            sessionCoins += 50;
+                            endMatch(true); // Победа
+                        }
+                        document.getElementById('sessionCoins').innerText = sessionCoins;
+                    } else if (n.type === 'main') {
+                        endMatch(false); // Поражение
                     }
                 }
             });
@@ -250,29 +270,29 @@
         }
 
         // ОТРИСОВКА
-        function drawServerNode(x, y, color, type, frame) {
-            let size = type === 'main' ? 26 : 18; let pulse = Math.sin(frame * 0.05) * 3;
-            ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([10, 5]);
-            ctx.beginPath(); ctx.arc(x, y, size + 8 + pulse, frame*0.02, Math.PI*2 + frame*0.02); ctx.stroke(); ctx.setLineDash([]);
-            ctx.save(); ctx.translate(x, y); ctx.rotate(-frame * 0.03);
-            ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.shadowBlur = 15; ctx.shadowColor = color;
+        function drawServerNode(x, y, c, type, frame) {
+            let size = type === 'main' ? 28 : 20; let pulse = Math.sin(frame * 0.05) * 4;
+            ctx.strokeStyle = c; ctx.lineWidth = 2; ctx.setLineDash([15, 5]);
+            ctx.beginPath(); ctx.arc(x, y, size + 10 + pulse, frame*0.02, Math.PI*2 + frame*0.02); ctx.stroke(); ctx.setLineDash([]);
+            ctx.save(); ctx.translate(x, y); ctx.rotate(-frame * 0.02);
+            ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.strokeStyle = c; ctx.lineWidth = 2; ctx.shadowBlur = 20; ctx.shadowColor = c;
             ctx.beginPath(); ctx.moveTo(0, -size); ctx.lineTo(size, 0); ctx.lineTo(0, size); ctx.lineTo(-size, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = color; ctx.shadowBlur = 20; ctx.fillRect(-size/3, -size/3, size/1.5, size/1.5); ctx.restore();
+            ctx.fillStyle = c; ctx.shadowBlur = 30; ctx.fillRect(-size/3, -size/3, size/1.5, size/1.5); ctx.restore();
         }
 
         function draw() {
             ctx.fillStyle = '#030305'; ctx.fillRect(0, 0, W, H);
             
-            // Сетка
-            ctx.strokeStyle = 'rgba(0, 255, 204, 0.05)'; ctx.lineWidth = 1;
-            let vY = H * 0.2;
-            for(let i = -W; i < W*2; i+=40) { ctx.beginPath(); ctx.moveTo(i, H); ctx.lineTo(W/2 + (i-W/2)*0.3, vY); ctx.stroke(); }
-            for(let i = H; i > vY; i-= (H-i)*0.08 + 10) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
+            // Движущаяся Сетка (Эффект полета)
+            gridOffsetY = (gridOffsetY + 0.5) % 40;
+            ctx.strokeStyle = 'rgba(0, 255, 204, 0.08)'; ctx.lineWidth = 1;
+            for(let i = -W; i < W*2; i+=40) { ctx.beginPath(); ctx.moveTo(i, H); ctx.lineTo(W/2 + (i-W/2)*0.1, UI_TOP); ctx.stroke(); }
+            for(let i = UI_TOP + gridOffsetY; i < H; i+=40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
 
-            // Firewall (река)
+            // Лазерная река
             ctx.fillStyle = 'rgba(255, 51, 102, 0.05)'; ctx.fillRect(0, midY - 20, W, 40);
-            ctx.strokeStyle = '#ff3366'; ctx.lineWidth = 2; ctx.setLineDash([20, 10]); ctx.lineDashOffset = -frameCount;
-            ctx.shadowBlur = 10; ctx.shadowColor = '#ff3366';
+            ctx.strokeStyle = '#ff3366'; ctx.lineWidth = 2; ctx.setLineDash([20, 10]); ctx.lineDashOffset = -frameCount*2;
+            ctx.shadowBlur = 15; ctx.shadowColor = '#ff3366';
             ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(W, midY); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(0, midY-15); ctx.lineTo(W, midY-15); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(0, midY+15); ctx.lineTo(W, midY+15); ctx.stroke();
@@ -284,86 +304,102 @@
             ctx.fillStyle = '#00ffcc'; let dataY = midY - 25 + (frameCount * 2) % 50;
             ctx.fillRect(W*0.25 - 5, dataY, 10, 5); ctx.fillRect(W*0.75 - 5, dataY, 10, 5);
 
-            // Зона высадки
             if (selectedCard !== null) {
                 let type = deck[selectedCard].type;
                 if (type === 'spell') {
-                    ctx.fillStyle = 'rgba(255, 51, 102, 0.1)'; ctx.fillRect(0, 0, W, H); // Спелл можно кидать куда угодно
+                    ctx.fillStyle = 'rgba(255, 51, 102, 0.1)'; ctx.fillRect(0, UI_TOP, W, H-UI_TOP-UI_BOT); 
                 } else {
                     let grad = ctx.createLinearGradient(0, midY, 0, H);
-                    grad.addColorStop(0, 'rgba(0, 255, 204, 0)'); grad.addColorStop(1, 'rgba(0, 255, 204, 0.15)');
+                    grad.addColorStop(0, 'rgba(0, 255, 204, 0)'); grad.addColorStop(1, 'rgba(0, 255, 204, 0.2)');
                     ctx.fillStyle = grad; ctx.fillRect(0, midY, W, H - midY);
                 }
             }
 
-            // Узлы
             nodes.forEach(t => {
                 drawServerNode(t.x, t.y, t.team === 'player' ? '#00ffcc' : '#ff3366', t.type, frameCount);
-                let hpW = t.type === 'main' ? 50 : 35;
-                ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(t.x - hpW/2 - 2, t.y - 45 - 2, hpW + 4, 8);
-                ctx.fillStyle = t.team === 'player' ? '#00ffcc' : '#ff3366'; ctx.fillRect(t.x - hpW/2, t.y - 45, hpW * (t.hp / t.maxHp), 4);
+                let hpW = t.type === 'main' ? 60 : 45;
+                ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(t.x - hpW/2 - 2, t.y - 55 - 2, hpW + 4, 8);
+                ctx.fillStyle = t.team === 'player' ? '#00ffcc' : '#ff3366'; ctx.fillRect(t.x - hpW/2, t.y - 55, hpW * (t.hp / t.maxHp), 4);
             });
 
-            // Юниты
+            // Понятные Юниты
             units.forEach(u => {
-                ctx.fillStyle = '#111'; ctx.strokeStyle = u.color; ctx.lineWidth = 2;
-                ctx.shadowBlur = 10; ctx.shadowColor = u.color;
-                ctx.save(); ctx.translate(u.x, u.y);
+                ctx.shadowBlur = 10; ctx.shadowColor = u.c;
+                // Круг-основа
+                ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.strokeStyle = u.c; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(u.x, u.y, 14, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                // Иконка
+                ctx.fillStyle = '#fff'; ctx.font = '14px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(u.icon, u.x, u.y); ctx.shadowBlur = 0;
                 
-                // Легкая анимация шага
-                let w = Math.sin(frameCount * 0.2) * 2;
-                
-                if (u.shape === 'square') { ctx.fillRect(-u.sz/2, -u.sz/2+w, u.sz, u.sz); ctx.strokeRect(-u.sz/2, -u.sz/2+w, u.sz, u.sz); } 
-                else if (u.shape === 'circle') { ctx.beginPath(); ctx.arc(0, w, u.sz, 0, Math.PI*2); ctx.fill(); ctx.stroke(); } 
-                else if (u.shape === 'triangle') { ctx.beginPath(); ctx.moveTo(0, -u.sz+w); ctx.lineTo(u.sz, u.sz+w); ctx.lineTo(-u.sz, u.sz+w); ctx.closePath(); ctx.fill(); ctx.stroke(); }
-                
-                ctx.restore(); ctx.shadowBlur = 0;
                 // ХП юнитов
-                let hw = u.sz * 2; ctx.fillStyle = '#ff4757'; ctx.fillRect(u.x - hw/2, u.y - u.sz - 10, hw, 3);
-                ctx.fillStyle = '#2ed573'; ctx.fillRect(u.x - hw/2, u.y - u.sz - 10, hw * (u.hp / u.maxHp), 3);
+                ctx.fillStyle = '#ff4757'; ctx.fillRect(u.x - 12, u.y - 20, 24, 3);
+                ctx.fillStyle = '#2ed573'; ctx.fillRect(u.x - 12, u.y - 20, 24 * (u.hp / u.maxHp), 3);
             });
 
-            // Снаряды
             projectiles.forEach(p => {
-                ctx.fillStyle = p.color; ctx.shadowBlur = 10; ctx.shadowColor = p.color;
+                ctx.fillStyle = p.c; ctx.shadowBlur = 10; ctx.shadowColor = p.c;
                 ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
             });
 
-            // Эффекты
             effects.forEach(e => {
-                ctx.strokeStyle = `rgba(255,255,255,${e.life})`; ctx.lineWidth = 2;
+                ctx.strokeStyle = `rgba(255,255,255,${e.life})`; ctx.lineWidth = 3;
                 ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI*2); ctx.stroke();
             });
+
+            floatTexts.forEach(ft => { 
+                ctx.fillStyle=ft.col; ctx.globalAlpha=Math.max(0, ft.life); ctx.font='bold 16px Montserrat'; ctx.textAlign='center'; 
+                ctx.shadowBlur=5; ctx.shadowColor='#000'; ctx.fillText(ft.txt, ft.x, ft.y); ctx.shadowBlur=0; 
+            }); ctx.globalAlpha=1.0;
         }
 
         function loop() { updateLogic(); draw(); requestAnimationFrame(loop); }
 
-        // ВЗАИМОДЕЙСТВИЕ С АРЕНОЙ
         canvas.addEventListener('touchstart', (e) => {
             if (selectedCard === null || gameState !== 'PLAYING') return; 
-            
             let tx = e.touches[0].clientX; let ty = e.touches[0].clientY;
             let card = deck[selectedCard];
 
-            // Если это не спелл (лазер), чекаем границу высадки
             if (card.type !== 'spell' && (ty < midY || ty > H - UI_BOT)) {
-                ctx.fillStyle = 'rgba(255, 51, 102, 0.5)'; ctx.fillRect(0,0,W,H); return;
+                ctx.fillStyle = 'rgba(255, 51, 102, 0.4)'; ctx.fillRect(0,0,W,H); return;
             }
 
             mana -= card.cost; selectedCard = null; updateCardsUI();
 
             if (card.type === 'spell') {
-                // Орбитальный лазер
-                createEffect(tx, ty, '#ff3366', 80);
-                nodes.concat(units).forEach(ent => {
-                    if (ent.team !== 'player' && Math.hypot(ent.x - tx, ent.y - ty) < 80) {
-                        ent.hp -= 300; // Урон лазера
-                    }
-                });
+                createEffect(tx, ty, '#ff3366', 100); spawnText(tx, ty-20, "УДАР!", "#ff3366");
+                nodes.concat(units).forEach(ent => { if (ent.team !== 'player' && Math.hypot(ent.x - tx, ent.y - ty) < 90) ent.hp -= 400; });
             } else {
                 spawnUnit(card.type, tx, ty, 'player');
             }
         });
+
+        // ЛОГИКА ЗАВЕРШЕНИЯ МАТЧА
+        function resolveMatchByTime() {
+            let playerMain = nodes.find(n => n.id === 'p_m');
+            let enemyMain = nodes.find(n => n.id === 'e_m');
+            let isWin = playerMain.hp >= enemyMain.hp; // Если ХП больше или равно - победа
+            endMatch(isWin);
+        }
+
+        async function endMatch(isWin) {
+            gameState = 'GAME_OVER';
+            let ov = document.getElementById('gameOverOverlay');
+            ov.style.display = 'flex';
+            
+            document.getElementById('goTitle').innerText = isWin ? 'СИСТЕМА ВЗЛОМАНА' : 'КРИТИЧЕСКИЙ СБОЙ';
+            document.getElementById('goTitle').style.color = isWin ? '#00ffcc' : '#ff3366';
+            document.getElementById('goTitle').style.textShadow = isWin ? '0 0 20px #00ffcc' : '0 0 20px #ff3366';
+
+            document.getElementById('finalCoins').innerText = sessionCoins;
+            
+            if (isWin) {
+                document.getElementById('lootboxContainer').style.display = 'block';
+            }
+
+            // Отправляем резалт на бекенд
+            try { await fetch(`${BACKEND_URL}/save_score`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telegram_id: user.id, username: nickname, score: 1, coins: sessionCoins, game: 'clash' }) }); } catch(e) {}
+        }
 
         initDeckUI(); requestAnimationFrame(loop);
     </script>
