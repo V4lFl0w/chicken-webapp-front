@@ -3,287 +3,369 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Neon Clash</title>
+    <title>Cyber Breach</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; padding: 0; background-color: #05050a; color: white; font-family: 'Montserrat', sans-serif; overflow: hidden; touch-action: none; user-select: none; }
+        body { margin: 0; padding: 0; background-color: #030305; color: white; font-family: 'Montserrat', sans-serif; overflow: hidden; touch-action: none; user-select: none; }
         
-        /* ВЕРХНЯЯ ПАНЕЛЬ */
-        #topUI {
-            position: absolute; top: 0; left: 0; width: 100%; height: 60px;
-            background: linear-gradient(180deg, #0a0a12 0%, rgba(5,5,10,0.8) 100%);
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 0 15px; box-sizing: border-box; z-index: 100;
-            border-bottom: 1px solid #ff3366; box-shadow: 0 4px 15px rgba(255, 51, 102, 0.2);
-        }
-        #backBtn { background: #151522; color: #fff; border: 1px solid #ff3366; border-radius: 8px; padding: 8px 12px; font-weight: 900; font-size: 12px; cursor: pointer; text-transform: uppercase; }
-        .timer { font-size: 20px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #fff; }
-        .enemy-info { font-size: 12px; color: #ff3366; font-weight: bold; text-align: right; }
+        #topUI { position: absolute; top: 0; left: 0; width: 100%; height: 60px; background: rgba(5, 5, 10, 0.6); backdrop-filter: blur(10px); display: flex; justify-content: space-between; align-items: center; padding: 0 15px; box-sizing: border-box; z-index: 100; border-bottom: 1px solid rgba(255, 51, 102, 0.4); box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        #backBtn { background: rgba(255, 255, 255, 0.05); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 8px 12px; font-weight: 900; font-size: 12px; cursor: pointer; text-transform: uppercase; }
+        .timer { font-size: 22px; font-weight: 900; color: #fff; text-shadow: 0 0 10px rgba(255,255,255,0.5); letter-spacing: 2px; }
+        .enemy-info { font-size: 10px; color: #ff3366; font-weight: 900; text-align: right; text-transform: uppercase; letter-spacing: 1px; }
+        .enemy-info span { font-size: 14px; color: #fff; text-shadow: 0 0 8px #ff3366; }
 
-        /* ИГРОВОЕ ПОЛЕ */
-        canvas { display: block; position: absolute; top: 60px; left: 0; z-index: 1; }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
 
-        /* НИЖНЯЯ ПАНЕЛЬ (КОЛОДА И МАНА) */
-        #bottomUI {
-            position: absolute; bottom: 0; left: 0; width: 100%; height: 130px;
-            background: linear-gradient(0deg, #0a0a12 0%, rgba(5,5,10,0.9) 100%);
-            display: flex; flex-direction: column; justify-content: flex-end;
-            padding: 10px; box-sizing: border-box; z-index: 100;
-            border-top: 1px solid #00ffcc; box-shadow: 0 -4px 15px rgba(0, 255, 204, 0.2);
-        }
+        #bottomUI { position: absolute; bottom: 0; left: 0; width: 100%; height: 145px; background: linear-gradient(0deg, rgba(3,3,5,1) 30%, rgba(3,3,5,0.8) 100%); backdrop-filter: blur(8px); display: flex; flex-direction: column; justify-content: flex-end; padding: 15px 10px 25px; box-sizing: border-box; z-index: 100; border-top: 1px solid rgba(0, 255, 204, 0.3); box-shadow: 0 -10px 30px rgba(0,0,0,0.9); }
+        .mana-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 6px; padding: 0 5px; }
+        .mana-text { font-size: 11px; font-weight: 900; color: #00ffcc; letter-spacing: 1px; text-transform: uppercase; }
+        .mana-count { font-size: 18px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #00ffcc; }
+        .mana-container { width: 100%; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; position: relative; overflow: hidden; box-shadow: inset 0 0 5px rgba(0,0,0,0.5); margin-bottom: 12px; }
+        .mana-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #00ffcc, #0099ff); transition: width 0.1s linear; box-shadow: 0 0 10px #00ffcc; }
 
-        /* ПОЛОСА МАНЫ */
-        .mana-container { width: 100%; height: 12px; background: #151522; border-radius: 6px; border: 1px solid #333; margin-bottom: 10px; position: relative; overflow: hidden; }
-        .mana-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #8E2DE2, #4A00E0); transition: width 0.1s linear; }
-        .mana-text { position: absolute; top: -18px; left: 5px; font-size: 12px; font-weight: 900; color: #b565ff; text-shadow: 0 0 5px #b565ff; }
+        .cards-deck { display: flex; justify-content: space-around; width: 100%; gap: 10px; perspective: 500px; }
+        .card { flex: 1; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; height: 80px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); opacity: 0.4; filter: grayscale(100%); transform-style: preserve-3d; }
+        .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 100%); border-radius: 12px; pointer-events: none; }
+        .card.ready { opacity: 1; filter: grayscale(0%); border-color: rgba(0, 255, 204, 0.5); box-shadow: 0 5px 15px rgba(0, 255, 204, 0.15); }
+        .card.selected { transform: translateY(-15px) rotateX(10deg); border-color: #00ffcc; box-shadow: 0 10px 25px rgba(0, 255, 204, 0.4); background: rgba(0, 255, 204, 0.1); }
+        .card-icon { font-size: 28px; margin-bottom: 4px; filter: drop-shadow(0 0 5px rgba(255,255,255,0.5)); }
+        .card-cost { position: absolute; top: -10px; left: -10px; background: #000; border-radius: 50%; width: 24px; height: 24px; display: flex; justify-content: center; align-items: center; font-size: 13px; font-weight: 900; color: #00ffcc; border: 2px solid #00ffcc; box-shadow: 0 0 10px rgba(0,255,204,0.5); }
+        .card-name { font-size: 9px; font-weight: 900; color: #fff; letter-spacing: 0.5px; }
 
-        /* КАРТОЧКИ */
-        .cards-deck { display: flex; justify-content: space-around; width: 100%; gap: 8px; }
-        .card {
-            flex: 1; background: #111; border: 2px solid #444; border-radius: 8px;
-            height: 75px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-            position: relative; transition: 0.2s; opacity: 0.5; /* Полупрозрачные, пока нет маны */
-        }
-        .card.ready { opacity: 1; border-color: #00ffcc; box-shadow: 0 0 10px rgba(0, 255, 204, 0.3); }
-        .card.selected { transform: translateY(-10px); border-color: #fff; box-shadow: 0 0 15px #fff; background: #222; }
-        
-        .card-icon { font-size: 24px; margin-bottom: 2px; }
-        .card-cost {
-            position: absolute; top: -8px; left: -8px; background: #8E2DE2; border-radius: 50%;
-            width: 22px; height: 22px; display: flex; justify-content: center; align-items: center;
-            font-size: 12px; font-weight: 900; border: 2px solid #000; box-shadow: 0 0 5px #8E2DE2;
-        }
-        .card-name { font-size: 9px; font-weight: bold; color: #ccc; text-transform: uppercase; }
+        .scanlines { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); background-size: 100% 4px, 3px 100%; pointer-events: none; z-index: 50; }
+
+        #gameOverOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(3, 3, 5, 0.95); z-index: 200; display: none; flex-direction: column; justify-content: center; align-items: center; }
+        h1 { font-size: 40px; margin-bottom: 10px; text-transform: uppercase; text-align: center; }
+        .restart-btn { margin-top: 30px; background: rgba(255,255,255,0.1); color: #fff; font-size: 18px; font-weight: 900; padding: 15px 40px; border: 1px solid #fff; border-radius: 12px; cursor: pointer; text-transform: uppercase; }
     </style>
 </head>
 <body>
 
     <div id="topUI">
-        <button id="backBtn" onclick="window.location.href='../index.html'">◀ ХАБ</button>
-        <div class="timer" id="gameTimer">3:00</div>
-        <div class="enemy-info">AI SYSTEM<br><span style="color:#fff;">Bot v1.0</span></div>
+        <button id="backBtn" onclick="window.location.href='../index.html'">◀ Выход</button>
+        <div class="timer" id="gameTimer">SYSTEM</div>
+        <div class="enemy-info">ХОСТ:<br><span>CORP_AI</span></div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
+    <div class="scanlines"></div>
 
     <div id="bottomUI">
-        <div class="mana-text">ЭНЕРГИЯ: <span id="manaVal">0</span>/10</div>
+        <div class="mana-header">
+            <div class="mana-text">Вычислительная мощность</div>
+            <div class="mana-count"><span id="manaVal">0</span><span style="color:#555; font-size:14px;">/10</span></div>
+        </div>
         <div class="mana-container">
             <div class="mana-bar" id="manaBar"></div>
         </div>
-        
-        <div class="cards-deck" id="deckContainer">
-            </div>
+        <div class="cards-deck" id="deckContainer"></div>
+    </div>
+
+    <div id="gameOverOverlay">
+        <h1 id="goTitle"></h1>
+        <button class="restart-btn" onclick="location.reload()">НОВАЯ СЕССИЯ</button>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp; tg.expand(); tg.disableVerticalSwipes && tg.disableVerticalSwipes();
-        tg.setHeaderColor('#05050a');
+        tg.setHeaderColor('#030305');
 
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Размеры арены
-        const UI_TOP = 60;
-        const UI_BOT = 130;
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight - UI_TOP - UI_BOT;
-        const W = canvas.width;
-        const H = canvas.height;
+        const canvas = document.getElementById('gameCanvas'); const ctx = canvas.getContext('2d');
+        const UI_TOP = 60; const UI_BOT = 145;
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        const W = canvas.width; const H = canvas.height; const midY = (UI_TOP + (H - UI_BOT)) / 2;
 
-        // Игровые переменные
-        let frameCount = 0;
-        let mana = 0;
-        const MAX_MANA = 10;
-        const MANA_REGEN_RATE = 0.015; // Скорость накопления маны за кадр
+        let gameState = 'PLAYING';
+        let frameCount = 0; let mana = 5; const MAX_MANA = 10; const MANA_REGEN = 0.025;
+        let enemyMana = 5; // У ИИ своя мана
         let selectedCard = null;
 
-        // КОЛОДА КАРТ
         const deck = [
-            { id: 'tank', name: 'ГЛЫБА', cost: 5, icon: '🛡️', color: '#00ffcc' },
-            { id: 'shooter', name: 'ДРОН', cost: 3, icon: '⚔️', color: '#00ffcc' },
-            { id: 'swarm', name: 'РОЙ', cost: 2, icon: '🏃‍♂️', color: '#00ffcc' },
-            { id: 'laser', name: 'ЛАЗЕР', cost: 4, icon: '💥', color: '#ff3366' }
+            { id: 'tank', name: 'ТРОЯН', cost: 5, icon: '👾', type: 'tank' },
+            { id: 'shooter', name: 'DDOS', cost: 3, icon: '🛰️', type: 'shooter' },
+            { id: 'swarm', name: 'ЧЕРВИ', cost: 2, icon: '🦠', type: 'swarm' },
+            { id: 'laser', name: 'ROOTKIT', cost: 4, icon: '⚡', type: 'spell' }
         ];
 
-        // БАШНИ НА АРЕНЕ
-        let towers = [
-            // ИГРОК (Снизу - Голубые)
-            { x: W*0.25, y: H*0.75, hp: 1500, maxHp: 1500, team: 'player', type: 'side' },
-            { x: W*0.75, y: H*0.75, hp: 1500, maxHp: 1500, team: 'player', type: 'side' },
-            { x: W*0.5,  y: H*0.9,  hp: 2500, maxHp: 2500, team: 'player', type: 'main' },
-            // ВРАГ (Сверху - Красные)
-            { x: W*0.25, y: H*0.25, hp: 1500, maxHp: 1500, team: 'enemy', type: 'side' },
-            { x: W*0.75, y: H*0.25, hp: 1500, maxHp: 1500, team: 'enemy', type: 'side' },
-            { x: W*0.5,  y: H*0.1,  hp: 2500, maxHp: 2500, team: 'enemy', type: 'main' }
-        ];
+        // ХАРАКТЕРИСТИКИ ЮНИТОВ
+        const UNIT_STATS = {
+            tank: { hp: 1200, spd: 0.5, dmg: 60, rng: 20, atkSpd: 60, buildsOnly: true, sz: 14, shape: 'square' },
+            shooter: { hp: 250, spd: 1.0, dmg: 25, rng: 120, atkSpd: 40, buildsOnly: false, sz: 10, shape: 'triangle' },
+            swarm: { hp: 80, spd: 1.8, dmg: 10, rng: 15, atkSpd: 20, buildsOnly: false, sz: 6, shape: 'circle' }
+        };
 
-        // Инициализация интерфейса карт
+        let nodes = []; let units = []; let projectiles = []; let effects = [];
+
+        function initMap() {
+            nodes = [
+                { id: 'p_l', x: W*0.25, y: H - UI_BOT - 120, hp: 1500, maxHp: 1500, team: 'player', type: 'side' },
+                { id: 'p_r', x: W*0.75, y: H - UI_BOT - 120, hp: 1500, maxHp: 1500, team: 'player', type: 'side' },
+                { id: 'p_m', x: W*0.5,  y: H - UI_BOT - 30,  hp: 3000, maxHp: 3000, team: 'player', type: 'main' },
+                { id: 'e_l', x: W*0.25, y: UI_TOP + 100, hp: 1500, maxHp: 1500, team: 'enemy', type: 'side' },
+                { id: 'e_r', x: W*0.75, y: UI_TOP + 100, hp: 1500, maxHp: 1500, team: 'enemy', type: 'side' },
+                { id: 'e_m', x: W*0.5,  y: UI_TOP + 30,  hp: 3000, maxHp: 3000, team: 'enemy', type: 'main' }
+            ];
+        }
+        initMap();
+
         function initDeckUI() {
-            const container = document.getElementById('deckContainer');
-            container.innerHTML = '';
+            const c = document.getElementById('deckContainer'); c.innerHTML = '';
             deck.forEach((card, index) => {
-                let el = document.createElement('div');
-                el.className = 'card';
-                el.id = `card-${index}`;
-                el.innerHTML = `
-                    <div class="card-cost">${card.cost}</div>
-                    <div class="card-icon">${card.icon}</div>
-                    <div class="card-name">${card.name}</div>
-                `;
-                el.onclick = () => selectCard(index);
-                container.appendChild(el);
+                let el = document.createElement('div'); el.className = 'card'; el.id = `card-${index}`;
+                el.innerHTML = `<div class="card-cost" style="color:${card.type==='spell'?'#ff3366':'#00ffcc'}; border-color:${card.type==='spell'?'#ff3366':'#00ffcc'}">${card.cost}</div><div class="card-icon">${card.icon}</div><div class="card-name">${card.name}</div>`;
+                el.onclick = () => { if (mana >= card.cost) { selectedCard = selectedCard === index ? null : index; updateCardsUI(); } }; c.appendChild(el);
             });
         }
-
-        // Выбор карты
-        function selectCard(index) {
-            let card = deck[index];
-            if (mana < card.cost) return; // Не хватает маны
-            
-            if (selectedCard === index) {
-                selectedCard = null; // Отмена выбора
-            } else {
-                selectedCard = index;
-            }
-            updateCardsUI();
-        }
-
-        // Обновление состояния карточек
         function updateCardsUI() {
-            deck.forEach((card, index) => {
-                let el = document.getElementById(`card-${index}`);
-                // Доступность по мане
-                if (mana >= card.cost) el.classList.add('ready');
-                else { el.classList.remove('ready'); if(selectedCard === index) selectedCard = null; }
-                
-                // Выделение
-                if (selectedCard === index) el.classList.add('selected');
-                else el.classList.remove('selected');
+            deck.forEach((c, i) => {
+                let el = document.getElementById(`card-${i}`);
+                if (mana >= c.cost) el.classList.add('ready'); else { el.classList.remove('ready'); if(selectedCard === i) selectedCard = null; }
+                if (selectedCard === i) el.classList.add('selected'); else el.classList.remove('selected');
             });
         }
 
-        // ОТРИСОВКА АРЕНЫ И БАШЕН
-        function drawArena() {
-            ctx.fillStyle = '#05050a'; // Фон
-            ctx.fillRect(0, 0, W, H);
-
-            // Кибер-сетка
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-            ctx.lineWidth = 1;
-            for(let i=0; i<W; i+=30) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke(); }
-            for(let i=0; i<H; i+=30) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
-
-            // Река (Неоновый разлом посередине)
-            const midY = H / 2;
-            ctx.fillStyle = '#0a0a1a';
-            ctx.fillRect(0, midY - 25, W, 50);
-            ctx.strokeStyle = '#8E2DE2'; ctx.lineWidth = 2;
-            ctx.shadowBlur = 10; ctx.shadowColor = '#8E2DE2';
-            ctx.beginPath(); ctx.moveTo(0, midY - 25); ctx.lineTo(W, midY - 25); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(0, midY + 25); ctx.lineTo(W, midY + 25); ctx.stroke();
-            ctx.shadowBlur = 0;
-
-            // Мосты
-            ctx.fillStyle = '#222';
-            ctx.fillRect(W*0.25 - 30, midY - 30, 60, 60);
-            ctx.fillRect(W*0.75 - 30, midY - 30, 60, 60);
-            // Подсветка мостов
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-            ctx.strokeRect(W*0.25 - 30, midY - 30, 60, 60);
-            ctx.strokeRect(W*0.75 - 30, midY - 30, 60, 60);
-
-            // Зоны высадки (подсветка, если выбрана карта)
-            if (selectedCard !== null) {
-                ctx.fillStyle = 'rgba(0, 255, 204, 0.1)';
-                ctx.fillRect(0, midY, W, H - midY); // Можно высаживать только на своей половине
+        // СПАВН ЮНИТА
+        function spawnUnit(type, x, y, team) {
+            let stats = UNIT_STATS[type];
+            let color = team === 'player' ? '#00ffcc' : '#ff3366';
+            if (type === 'swarm') {
+                for(let i=0; i<3; i++) units.push({ x: x + (Math.random()*20-10), y: y + (Math.random()*20-10), team, type, color, hp: stats.hp, maxHp: stats.hp, spd: stats.spd, dmg: stats.dmg, rng: stats.rng, atkSpd: stats.atkSpd, cd: 0, buildsOnly: stats.buildsOnly, sz: stats.sz, shape: stats.shape });
+            } else {
+                units.push({ x, y, team, type, color, hp: stats.hp, maxHp: stats.hp, spd: stats.spd, dmg: stats.dmg, rng: stats.rng, atkSpd: stats.atkSpd, cd: 0, buildsOnly: stats.buildsOnly, sz: stats.sz, shape: stats.shape });
             }
-
-            // Отрисовка Башен
-            towers.forEach(t => {
-                let isPlayer = t.team === 'player';
-                let color = isPlayer ? '#00ffcc' : '#ff3366';
-                let size = t.type === 'main' ? 25 : 18;
-
-                // База башни
-                ctx.fillStyle = '#111';
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 2;
-                ctx.shadowBlur = 15; ctx.shadowColor = color;
-                ctx.beginPath(); ctx.arc(t.x, t.y, size, 0, Math.PI*2); 
-                ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
-
-                // Внутренний кристалл
-                ctx.fillStyle = color;
-                ctx.fillRect(t.x - size/2, t.y - size/2, size, size);
-
-                // Полоска ХП
-                let hpW = size * 2.5;
-                ctx.fillStyle = '#ff4757';
-                ctx.fillRect(t.x - hpW/2, t.y - size - 15, hpW, 5);
-                ctx.fillStyle = '#2ed573';
-                ctx.fillRect(t.x - hpW/2, t.y - size - 15, hpW * (t.hp / t.maxHp), 5);
-            });
+            createEffect(x, y, color, 15);
         }
 
-        // ИГРОВОЙ ЦИКЛ
-        function loop() {
-            frameCount++;
+        function createEffect(x, y, color, size) { effects.push({x, y, color, r: 5, maxR: size, life: 1}); }
 
-            // Накопление маны
+        // ИСКУССТВЕННЫЙ ИНТЕЛЛЕКТ ВРАГА
+        function enemyAI() {
+            if (enemyMana < MAX_MANA) enemyMana += MANA_REGEN;
+            if (frameCount % 60 === 0 && Math.random() > 0.5) {
+                let types = ['tank', 'shooter', 'swarm'];
+                let typeToSpawn = types[Math.floor(Math.random() * types.length)];
+                let cost = deck.find(c => c.type === typeToSpawn).cost;
+                
+                if (enemyMana >= cost) {
+                    enemyMana -= cost;
+                    let spawnX = Math.random() > 0.5 ? W*0.25 : W*0.75;
+                    let spawnY = UI_TOP + 140; // Чуть ниже вражеских боковых башен
+                    spawnUnit(typeToSpawn, spawnX, spawnY, 'enemy');
+                }
+            }
+        }
+
+        // ЛОГИКА ЮНИТОВ И БОЕВОЙ ДВИЖОК
+        function updateLogic() {
+            if (gameState !== 'PLAYING') return;
+            frameCount++;
             if (mana < MAX_MANA) {
-                mana += MANA_REGEN_RATE;
-                if (mana > MAX_MANA) mana = MAX_MANA;
-                
-                // Обновление UI маны
-                document.getElementById('manaBar').style.width = `${(mana / MAX_MANA) * 100}%`;
-                document.getElementById('manaVal').innerText = Math.floor(mana);
-                
-                // Проверяем карточки раз в 10 кадров для оптимизации
+                mana += MANA_REGEN; if (mana > MAX_MANA) mana = MAX_MANA;
+                document.getElementById('manaBar').style.width = `${(mana / MAX_MANA) * 100}%`; document.getElementById('manaVal').innerText = Math.floor(mana);
                 if (frameCount % 10 === 0) updateCardsUI();
             }
 
-            drawArena();
-            requestAnimationFrame(loop);
+            enemyAI();
+
+            // ПОИСК ПУТИ И АТАКА
+            units.forEach(u => {
+                if (u.cd > 0) u.cd--;
+                let target = null; let minDist = Infinity;
+
+                // Ищем врагов
+                let enemiesArray = u.buildsOnly ? nodes : nodes.concat(units);
+                enemiesArray.filter(e => e.team !== u.team).forEach(e => {
+                    let d = Math.hypot(e.x - u.x, e.y - u.y);
+                    if (d < minDist) { minDist = d; target = e; }
+                });
+
+                if (target) {
+                    if (minDist <= u.rng) {
+                        // АТАКА
+                        if (u.cd <= 0) {
+                            u.cd = u.atkSpd;
+                            if (u.type === 'shooter') {
+                                projectiles.push({ x: u.x, y: u.y, tx: target.x, ty: target.y, t: target, spd: 8, dmg: u.dmg, color: u.color });
+                            } else {
+                                target.hp -= u.dmg;
+                                createEffect(target.x, target.y, '#fff', 8);
+                            }
+                        }
+                    } else {
+                        // ДВИЖЕНИЕ С УЧЕТОМ МОСТОВ
+                        let tx = target.x; let ty = target.y;
+                        let onPlayerSide = u.y > midY; let targetOnEnemySide = target.y < midY;
+                        
+                        if ((onPlayerSide && targetOnEnemySide) || (!onPlayerSide && !targetOnEnemySide)) {
+                            let b1 = W*0.25; let b2 = W*0.75;
+                            let targetBridge = Math.abs(u.x - b1) < Math.abs(u.x - b2) ? b1 : b2;
+                            // Если не на мосту - идем к мосту
+                            if (Math.abs(u.x - targetBridge) > 15 && Math.abs(u.y - midY) > 20) {
+                                tx = targetBridge; ty = u.y; // Идем по горизонтали к мосту
+                            }
+                        }
+
+                        let angle = Math.atan2(ty - u.y, tx - u.x);
+                        u.x += Math.cos(angle) * u.spd;
+                        u.y += Math.sin(angle) * u.spd;
+                    }
+                }
+            });
+
+            // Снаряды
+            projectiles.forEach(p => {
+                let d = Math.hypot(p.tx - p.x, p.ty - p.y);
+                if (d < p.spd) {
+                    p.dead = true;
+                    if(p.t.hp !== undefined) { p.t.hp -= p.dmg; createEffect(p.tx, p.ty, p.color, 10); }
+                } else {
+                    p.x += (p.tx - p.x)/d * p.spd; p.y += (p.ty - p.y)/d * p.spd;
+                }
+            });
+
+            // Очистка мертвых
+            units = units.filter(u => u.hp > 0);
+            projectiles = projectiles.filter(p => !p.dead);
+            effects.forEach(e => { e.r += (e.maxR - e.r)*0.2; e.life -= 0.1; });
+            effects = effects.filter(e => e.life > 0);
+
+            // Проверка смерти узлов
+            nodes.forEach(n => {
+                if (n.hp <= 0 && !n.dead) {
+                    n.dead = true;
+                    createEffect(n.x, n.y, n.team==='player'?'#00ffcc':'#ff3366', 60);
+                    if (n.type === 'main') {
+                        gameState = 'GAME_OVER';
+                        let win = n.team === 'enemy';
+                        let ov = document.getElementById('gameOverOverlay');
+                        ov.style.display = 'flex';
+                        document.getElementById('goTitle').innerText = win ? 'СИСТЕМА ВЗЛОМАНА' : 'КРИТИЧЕСКИЙ СБОЙ';
+                        document.getElementById('goTitle').style.color = win ? '#00ffcc' : '#ff3366';
+                        document.getElementById('goTitle').style.textShadow = win ? '0 0 20px #00ffcc' : '0 0 20px #ff3366';
+                    }
+                }
+            });
+            nodes = nodes.filter(n => !n.dead);
         }
 
-        // КЛИК ПО АРЕНЕ (Высадка юнита)
-        canvas.addEventListener('touchstart', (e) => {
-            if (selectedCard === null) return; // Карта не выбрана
-            
-            // Координаты тапа с учетом отступа верхней панели
-            let tx = e.touches[0].clientX;
-            let ty = e.touches[0].clientY - UI_TOP; 
+        // ОТРИСОВКА
+        function drawServerNode(x, y, color, type, frame) {
+            let size = type === 'main' ? 26 : 18; let pulse = Math.sin(frame * 0.05) * 3;
+            ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([10, 5]);
+            ctx.beginPath(); ctx.arc(x, y, size + 8 + pulse, frame*0.02, Math.PI*2 + frame*0.02); ctx.stroke(); ctx.setLineDash([]);
+            ctx.save(); ctx.translate(x, y); ctx.rotate(-frame * 0.03);
+            ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.shadowBlur = 15; ctx.shadowColor = color;
+            ctx.beginPath(); ctx.moveTo(0, -size); ctx.lineTo(size, 0); ctx.lineTo(0, size); ctx.lineTo(-size, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = color; ctx.shadowBlur = 20; ctx.fillRect(-size/3, -size/3, size/1.5, size/1.5); ctx.restore();
+        }
 
-            // Проверка: высаживать можно только на своей половине (ниже реки)
-            if (ty < H / 2) {
-                console.log("Нельзя высаживать на вражеской территории!");
-                // Можно добавить красную вспышку или текст
-                return;
+        function draw() {
+            ctx.fillStyle = '#030305'; ctx.fillRect(0, 0, W, H);
+            
+            // Сетка
+            ctx.strokeStyle = 'rgba(0, 255, 204, 0.05)'; ctx.lineWidth = 1;
+            let vY = H * 0.2;
+            for(let i = -W; i < W*2; i+=40) { ctx.beginPath(); ctx.moveTo(i, H); ctx.lineTo(W/2 + (i-W/2)*0.3, vY); ctx.stroke(); }
+            for(let i = H; i > vY; i-= (H-i)*0.08 + 10) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
+
+            // Firewall (река)
+            ctx.fillStyle = 'rgba(255, 51, 102, 0.05)'; ctx.fillRect(0, midY - 20, W, 40);
+            ctx.strokeStyle = '#ff3366'; ctx.lineWidth = 2; ctx.setLineDash([20, 10]); ctx.lineDashOffset = -frameCount;
+            ctx.shadowBlur = 10; ctx.shadowColor = '#ff3366';
+            ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(W, midY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, midY-15); ctx.lineTo(W, midY-15); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, midY+15); ctx.lineTo(W, midY+15); ctx.stroke();
+            ctx.setLineDash([]); ctx.shadowBlur = 0;
+
+            // Мосты
+            const bW = 60; ctx.fillStyle = 'rgba(0, 255, 204, 0.1)';
+            ctx.fillRect(W*0.25 - bW/2, midY - 25, bW, 50); ctx.fillRect(W*0.75 - bW/2, midY - 25, bW, 50);
+            ctx.fillStyle = '#00ffcc'; let dataY = midY - 25 + (frameCount * 2) % 50;
+            ctx.fillRect(W*0.25 - 5, dataY, 10, 5); ctx.fillRect(W*0.75 - 5, dataY, 10, 5);
+
+            // Зона высадки
+            if (selectedCard !== null) {
+                let type = deck[selectedCard].type;
+                if (type === 'spell') {
+                    ctx.fillStyle = 'rgba(255, 51, 102, 0.1)'; ctx.fillRect(0, 0, W, H); // Спелл можно кидать куда угодно
+                } else {
+                    let grad = ctx.createLinearGradient(0, midY, 0, H);
+                    grad.addColorStop(0, 'rgba(0, 255, 204, 0)'); grad.addColorStop(1, 'rgba(0, 255, 204, 0.15)');
+                    ctx.fillStyle = grad; ctx.fillRect(0, midY, W, H - midY);
+                }
             }
 
+            // Узлы
+            nodes.forEach(t => {
+                drawServerNode(t.x, t.y, t.team === 'player' ? '#00ffcc' : '#ff3366', t.type, frameCount);
+                let hpW = t.type === 'main' ? 50 : 35;
+                ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(t.x - hpW/2 - 2, t.y - 45 - 2, hpW + 4, 8);
+                ctx.fillStyle = t.team === 'player' ? '#00ffcc' : '#ff3366'; ctx.fillRect(t.x - hpW/2, t.y - 45, hpW * (t.hp / t.maxHp), 4);
+            });
+
+            // Юниты
+            units.forEach(u => {
+                ctx.fillStyle = '#111'; ctx.strokeStyle = u.color; ctx.lineWidth = 2;
+                ctx.shadowBlur = 10; ctx.shadowColor = u.color;
+                ctx.save(); ctx.translate(u.x, u.y);
+                
+                // Легкая анимация шага
+                let w = Math.sin(frameCount * 0.2) * 2;
+                
+                if (u.shape === 'square') { ctx.fillRect(-u.sz/2, -u.sz/2+w, u.sz, u.sz); ctx.strokeRect(-u.sz/2, -u.sz/2+w, u.sz, u.sz); } 
+                else if (u.shape === 'circle') { ctx.beginPath(); ctx.arc(0, w, u.sz, 0, Math.PI*2); ctx.fill(); ctx.stroke(); } 
+                else if (u.shape === 'triangle') { ctx.beginPath(); ctx.moveTo(0, -u.sz+w); ctx.lineTo(u.sz, u.sz+w); ctx.lineTo(-u.sz, u.sz+w); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+                
+                ctx.restore(); ctx.shadowBlur = 0;
+                // ХП юнитов
+                let hw = u.sz * 2; ctx.fillStyle = '#ff4757'; ctx.fillRect(u.x - hw/2, u.y - u.sz - 10, hw, 3);
+                ctx.fillStyle = '#2ed573'; ctx.fillRect(u.x - hw/2, u.y - u.sz - 10, hw * (u.hp / u.maxHp), 3);
+            });
+
+            // Снаряды
+            projectiles.forEach(p => {
+                ctx.fillStyle = p.color; ctx.shadowBlur = 10; ctx.shadowColor = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+            });
+
+            // Эффекты
+            effects.forEach(e => {
+                ctx.strokeStyle = `rgba(255,255,255,${e.life})`; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI*2); ctx.stroke();
+            });
+        }
+
+        function loop() { updateLogic(); draw(); requestAnimationFrame(loop); }
+
+        // ВЗАИМОДЕЙСТВИЕ С АРЕНОЙ
+        canvas.addEventListener('touchstart', (e) => {
+            if (selectedCard === null || gameState !== 'PLAYING') return; 
+            
+            let tx = e.touches[0].clientX; let ty = e.touches[0].clientY;
             let card = deck[selectedCard];
-            
-            // Трата маны
-            mana -= card.cost;
-            selectedCard = null;
-            updateCardsUI();
 
-            // В СЛЕДУЮЩЕМ ЭТАПЕ ЗДЕСЬ БУДЕТ ДОБАВЛЕНИЕ ЮНИТА В МАССИВ
-            console.log(`Высажен ${card.name} на координатах X:${Math.floor(tx)} Y:${Math.floor(ty)}`);
-            
-            // Временный визуальный эффект высадки
-            ctx.fillStyle = '#fff';
-            ctx.shadowBlur = 20; ctx.shadowColor = '#fff';
-            ctx.beginPath(); ctx.arc(tx, ty, 20, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+            // Если это не спелл (лазер), чекаем границу высадки
+            if (card.type !== 'spell' && (ty < midY || ty > H - UI_BOT)) {
+                ctx.fillStyle = 'rgba(255, 51, 102, 0.5)'; ctx.fillRect(0,0,W,H); return;
+            }
 
+            mana -= card.cost; selectedCard = null; updateCardsUI();
+
+            if (card.type === 'spell') {
+                // Орбитальный лазер
+                createEffect(tx, ty, '#ff3366', 80);
+                nodes.concat(units).forEach(ent => {
+                    if (ent.team !== 'player' && Math.hypot(ent.x - tx, ent.y - ty) < 80) {
+                        ent.hp -= 300; // Урон лазера
+                    }
+                });
+            } else {
+                spawnUnit(card.type, tx, ty, 'player');
+            }
         });
 
-        // Запуск
-        initDeckUI();
-        requestAnimationFrame(loop);
-
+        initDeckUI(); requestAnimationFrame(loop);
     </script>
 </body>
 </html>
