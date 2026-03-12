@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Clash</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #05050a; color: white; font-family: 'Montserrat', sans-serif; overflow: hidden; touch-action: none; user-select: none; }
+        
+        /* ВЕРХНЯЯ ПАНЕЛЬ */
+        #topUI {
+            position: absolute; top: 0; left: 0; width: 100%; height: 60px;
+            background: linear-gradient(180deg, #0a0a12 0%, rgba(5,5,10,0.8) 100%);
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 15px; box-sizing: border-box; z-index: 100;
+            border-bottom: 1px solid #ff3366; box-shadow: 0 4px 15px rgba(255, 51, 102, 0.2);
+        }
+        #backBtn { background: #151522; color: #fff; border: 1px solid #ff3366; border-radius: 8px; padding: 8px 12px; font-weight: 900; font-size: 12px; cursor: pointer; text-transform: uppercase; }
+        .timer { font-size: 20px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #fff; }
+        .enemy-info { font-size: 12px; color: #ff3366; font-weight: bold; text-align: right; }
+
+        /* ИГРОВОЕ ПОЛЕ */
+        canvas { display: block; position: absolute; top: 60px; left: 0; z-index: 1; }
+
+        /* НИЖНЯЯ ПАНЕЛЬ (КОЛОДА И МАНА) */
+        #bottomUI {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 130px;
+            background: linear-gradient(0deg, #0a0a12 0%, rgba(5,5,10,0.9) 100%);
+            display: flex; flex-direction: column; justify-content: flex-end;
+            padding: 10px; box-sizing: border-box; z-index: 100;
+            border-top: 1px solid #00ffcc; box-shadow: 0 -4px 15px rgba(0, 255, 204, 0.2);
+        }
+
+        /* ПОЛОСА МАНЫ */
+        .mana-container { width: 100%; height: 12px; background: #151522; border-radius: 6px; border: 1px solid #333; margin-bottom: 10px; position: relative; overflow: hidden; }
+        .mana-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #8E2DE2, #4A00E0); transition: width 0.1s linear; }
+        .mana-text { position: absolute; top: -18px; left: 5px; font-size: 12px; font-weight: 900; color: #b565ff; text-shadow: 0 0 5px #b565ff; }
+
+        /* КАРТОЧКИ */
+        .cards-deck { display: flex; justify-content: space-around; width: 100%; gap: 8px; }
+        .card {
+            flex: 1; background: #111; border: 2px solid #444; border-radius: 8px;
+            height: 75px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: relative; transition: 0.2s; opacity: 0.5; /* Полупрозрачные, пока нет маны */
+        }
+        .card.ready { opacity: 1; border-color: #00ffcc; box-shadow: 0 0 10px rgba(0, 255, 204, 0.3); }
+        .card.selected { transform: translateY(-10px); border-color: #fff; box-shadow: 0 0 15px #fff; background: #222; }
+        
+        .card-icon { font-size: 24px; margin-bottom: 2px; }
+        .card-cost {
+            position: absolute; top: -8px; left: -8px; background: #8E2DE2; border-radius: 50%;
+            width: 22px; height: 22px; display: flex; justify-content: center; align-items: center;
+            font-size: 12px; font-weight: 900; border: 2px solid #000; box-shadow: 0 0 5px #8E2DE2;
+        }
+        .card-name { font-size: 9px; font-weight: bold; color: #ccc; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+
+    <div id="topUI">
+        <button id="backBtn" onclick="window.location.href='../index.html'">◀ ХАБ</button>
+        <div class="timer" id="gameTimer">3:00</div>
+        <div class="enemy-info">AI SYSTEM<br><span style="color:#fff;">Bot v1.0</span></div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="bottomUI">
+        <div class="mana-text">ЭНЕРГИЯ: <span id="manaVal">0</span>/10</div>
+        <div class="mana-container">
+            <div class="mana-bar" id="manaBar"></div>
+        </div>
+        
+        <div class="cards-deck" id="deckContainer">
+            </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp; tg.expand(); tg.disableVerticalSwipes && tg.disableVerticalSwipes();
+        tg.setHeaderColor('#05050a');
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Размеры арены
+        const UI_TOP = 60;
+        const UI_BOT = 130;
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight - UI_TOP - UI_BOT;
+        const W = canvas.width;
+        const H = canvas.height;
+
+        // Игровые переменные
+        let frameCount = 0;
+        let mana = 0;
+        const MAX_MANA = 10;
+        const MANA_REGEN_RATE = 0.015; // Скорость накопления маны за кадр
+        let selectedCard = null;
+
+        // КОЛОДА КАРТ
+        const deck = [
+            { id: 'tank', name: 'ГЛЫБА', cost: 5, icon: '🛡️', color: '#00ffcc' },
+            { id: 'shooter', name: 'ДРОН', cost: 3, icon: '⚔️', color: '#00ffcc' },
+            { id: 'swarm', name: 'РОЙ', cost: 2, icon: '🏃‍♂️', color: '#00ffcc' },
+            { id: 'laser', name: 'ЛАЗЕР', cost: 4, icon: '💥', color: '#ff3366' }
+        ];
+
+        // БАШНИ НА АРЕНЕ
+        let towers = [
+            // ИГРОК (Снизу - Голубые)
+            { x: W*0.25, y: H*0.75, hp: 1500, maxHp: 1500, team: 'player', type: 'side' },
+            { x: W*0.75, y: H*0.75, hp: 1500, maxHp: 1500, team: 'player', type: 'side' },
+            { x: W*0.5,  y: H*0.9,  hp: 2500, maxHp: 2500, team: 'player', type: 'main' },
+            // ВРАГ (Сверху - Красные)
+            { x: W*0.25, y: H*0.25, hp: 1500, maxHp: 1500, team: 'enemy', type: 'side' },
+            { x: W*0.75, y: H*0.25, hp: 1500, maxHp: 1500, team: 'enemy', type: 'side' },
+            { x: W*0.5,  y: H*0.1,  hp: 2500, maxHp: 2500, team: 'enemy', type: 'main' }
+        ];
+
+        // Инициализация интерфейса карт
+        function initDeckUI() {
+            const container = document.getElementById('deckContainer');
+            container.innerHTML = '';
+            deck.forEach((card, index) => {
+                let el = document.createElement('div');
+                el.className = 'card';
+                el.id = `card-${index}`;
+                el.innerHTML = `
+                    <div class="card-cost">${card.cost}</div>
+                    <div class="card-icon">${card.icon}</div>
+                    <div class="card-name">${card.name}</div>
+                `;
+                el.onclick = () => selectCard(index);
+                container.appendChild(el);
+            });
+        }
+
+        // Выбор карты
+        function selectCard(index) {
+            let card = deck[index];
+            if (mana < card.cost) return; // Не хватает маны
+            
+            if (selectedCard === index) {
+                selectedCard = null; // Отмена выбора
+            } else {
+                selectedCard = index;
+            }
+            updateCardsUI();
+        }
+
+        // Обновление состояния карточек
+        function updateCardsUI() {
+            deck.forEach((card, index) => {
+                let el = document.getElementById(`card-${index}`);
+                // Доступность по мане
+                if (mana >= card.cost) el.classList.add('ready');
+                else { el.classList.remove('ready'); if(selectedCard === index) selectedCard = null; }
+                
+                // Выделение
+                if (selectedCard === index) el.classList.add('selected');
+                else el.classList.remove('selected');
+            });
+        }
+
+        // ОТРИСОВКА АРЕНЫ И БАШЕН
+        function drawArena() {
+            ctx.fillStyle = '#05050a'; // Фон
+            ctx.fillRect(0, 0, W, H);
+
+            // Кибер-сетка
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            for(let i=0; i<W; i+=30) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke(); }
+            for(let i=0; i<H; i+=30) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
+
+            // Река (Неоновый разлом посередине)
+            const midY = H / 2;
+            ctx.fillStyle = '#0a0a1a';
+            ctx.fillRect(0, midY - 25, W, 50);
+            ctx.strokeStyle = '#8E2DE2'; ctx.lineWidth = 2;
+            ctx.shadowBlur = 10; ctx.shadowColor = '#8E2DE2';
+            ctx.beginPath(); ctx.moveTo(0, midY - 25); ctx.lineTo(W, midY - 25); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, midY + 25); ctx.lineTo(W, midY + 25); ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Мосты
+            ctx.fillStyle = '#222';
+            ctx.fillRect(W*0.25 - 30, midY - 30, 60, 60);
+            ctx.fillRect(W*0.75 - 30, midY - 30, 60, 60);
+            // Подсветка мостов
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+            ctx.strokeRect(W*0.25 - 30, midY - 30, 60, 60);
+            ctx.strokeRect(W*0.75 - 30, midY - 30, 60, 60);
+
+            // Зоны высадки (подсветка, если выбрана карта)
+            if (selectedCard !== null) {
+                ctx.fillStyle = 'rgba(0, 255, 204, 0.1)';
+                ctx.fillRect(0, midY, W, H - midY); // Можно высаживать только на своей половине
+            }
+
+            // Отрисовка Башен
+            towers.forEach(t => {
+                let isPlayer = t.team === 'player';
+                let color = isPlayer ? '#00ffcc' : '#ff3366';
+                let size = t.type === 'main' ? 25 : 18;
+
+                // База башни
+                ctx.fillStyle = '#111';
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 15; ctx.shadowColor = color;
+                ctx.beginPath(); ctx.arc(t.x, t.y, size, 0, Math.PI*2); 
+                ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+
+                // Внутренний кристалл
+                ctx.fillStyle = color;
+                ctx.fillRect(t.x - size/2, t.y - size/2, size, size);
+
+                // Полоска ХП
+                let hpW = size * 2.5;
+                ctx.fillStyle = '#ff4757';
+                ctx.fillRect(t.x - hpW/2, t.y - size - 15, hpW, 5);
+                ctx.fillStyle = '#2ed573';
+                ctx.fillRect(t.x - hpW/2, t.y - size - 15, hpW * (t.hp / t.maxHp), 5);
+            });
+        }
+
+        // ИГРОВОЙ ЦИКЛ
+        function loop() {
+            frameCount++;
+
+            // Накопление маны
+            if (mana < MAX_MANA) {
+                mana += MANA_REGEN_RATE;
+                if (mana > MAX_MANA) mana = MAX_MANA;
+                
+                // Обновление UI маны
+                document.getElementById('manaBar').style.width = `${(mana / MAX_MANA) * 100}%`;
+                document.getElementById('manaVal').innerText = Math.floor(mana);
+                
+                // Проверяем карточки раз в 10 кадров для оптимизации
+                if (frameCount % 10 === 0) updateCardsUI();
+            }
+
+            drawArena();
+            requestAnimationFrame(loop);
+        }
+
+        // КЛИК ПО АРЕНЕ (Высадка юнита)
+        canvas.addEventListener('touchstart', (e) => {
+            if (selectedCard === null) return; // Карта не выбрана
+            
+            // Координаты тапа с учетом отступа верхней панели
+            let tx = e.touches[0].clientX;
+            let ty = e.touches[0].clientY - UI_TOP; 
+
+            // Проверка: высаживать можно только на своей половине (ниже реки)
+            if (ty < H / 2) {
+                console.log("Нельзя высаживать на вражеской территории!");
+                // Можно добавить красную вспышку или текст
+                return;
+            }
+
+            let card = deck[selectedCard];
+            
+            // Трата маны
+            mana -= card.cost;
+            selectedCard = null;
+            updateCardsUI();
+
+            // В СЛЕДУЮЩЕМ ЭТАПЕ ЗДЕСЬ БУДЕТ ДОБАВЛЕНИЕ ЮНИТА В МАССИВ
+            console.log(`Высажен ${card.name} на координатах X:${Math.floor(tx)} Y:${Math.floor(ty)}`);
+            
+            // Временный визуальный эффект высадки
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 20; ctx.shadowColor = '#fff';
+            ctx.beginPath(); ctx.arc(tx, ty, 20, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+
+        });
+
+        // Запуск
+        initDeckUI();
+        requestAnimationFrame(loop);
+
+    </script>
+</body>
+</html>
