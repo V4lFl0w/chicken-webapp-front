@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>V-Hub: City Bloxx</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #090b12; overflow: hidden; touch-action: none; font-family: 'Montserrat', sans-serif; user-select: none;}
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1;}
+        
+        #topUI { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 75px; 
+            background: linear-gradient(180deg, rgba(10, 15, 30, 0.9) 0%, rgba(5, 5, 10, 0) 100%); 
+            display: flex; justify-content: space-between; align-items: flex-start; 
+            padding: 15px 20px; box-sizing: border-box; z-index: 100; pointer-events: none;
+        }
+
+        #backBtn {
+            pointer-events: auto;
+            background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.3); 
+            border-radius: 12px; padding: 10px 16px; font-weight: 900; font-size: 14px; 
+            cursor: pointer; box-shadow: 0 4px 0 #000; text-transform: uppercase; transition: 0.1s;
+        }
+        #backBtn:active { transform: translateY(4px); box-shadow: 0 0 0 #000; }
+
+        .stat-panel {
+            display: flex; flex-direction: column; align-items: flex-end; text-shadow: 0 2px 4px #000;
+        }
+        .stat-pop { font-size: 22px; font-weight: 900; color: #00f3ff; margin-bottom: 5px; }
+        .stat-combo { font-size: 16px; font-weight: 900; color: #ffea00; }
+
+        /* Оверлей меню/финала */
+        .overlay { position: fixed; inset: 0; background: rgba(5, 5, 10, 0.95); z-index: 200; display: flex; flex-direction: column; justify-content: center; align-items: center; backdrop-filter: blur(10px); }
+        .overlay h1 { font-size: 45px; margin-bottom: 10px; text-transform: uppercase; text-align: center; line-height: 1; font-style: italic; color: #fff; text-shadow: 0 0 20px rgba(0,243,255,0.8);}
+        .overlay p { color: #a5b1c2; font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 30px;}
+        
+        .btn-primary { background: linear-gradient(135deg, #00f3ff 0%, #0066ff 100%); color: #000; font-size: 20px; font-weight: 900; padding: 18px 50px; border: none; border-radius: 16px; cursor: pointer; text-transform: uppercase; box-shadow: 0 6px 0 #0044aa; transition: 0.1s;}
+        .btn-primary:active { transform: translateY(6px); box-shadow: 0 0 0 #0044aa; }
+
+        .progress-container {
+            position: absolute; left: 20px; top: 120px; width: 14px; height: 300px;
+            background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; z-index: 100;
+            display: flex; flex-direction: column-reverse; overflow: hidden;
+        }
+        .progress-bar { width: 100%; height: 0%; background: linear-gradient(0deg, #b534fa, #00f3ff); transition: height 0.3s; box-shadow: 0 0 10px #00f3ff;}
+    </style>
+</head>
+<body>
+    <div id="topUI">
+        <button id="backBtn" onclick="window.location.href='../index.html'">◀ ХАБ</button>
+        <div class="stat-panel">
+            <div class="stat-pop">👥 <span id="uiPop">0</span></div>
+            <div class="stat-combo" id="uiCombo"></div>
+        </div>
+    </div>
+
+    <div class="progress-container">
+        <div class="progress-bar" id="uiProgress"></div>
+    </div>
+
+    <div class="overlay" id="menuOverlay">
+        <h1>CITY BLOXX</h1>
+        <p>Построй кибер-башню!<br>Идеальные блоки приносят больше людей.</p>
+        <button class="btn-primary" onclick="startGame()">ИГРАТЬ</button>
+    </div>
+
+    <div class="overlay" id="gameOverOverlay" style="display: none;">
+        <h1 id="goTitle">СТРОЙКА ОКОНЧЕНА</h1>
+        <p id="goStats" style="font-size: 20px; color: #ffea00; font-weight: 900;"></p>
+        <button class="btn-primary" onclick="resetGame()">РЕВАНШ</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const tg = window.Telegram.WebApp; tg.expand(); tg.disableVerticalSwipes && tg.disableVerticalSwipes();
+        tg.setHeaderColor('#090b12');
+        const user = tg.initDataUnsafe?.user || { id: 12345, username: "Guest" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+
+        const canvas = document.getElementById('gameCanvas'); const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+
+        // --- ИГРОВЫЕ ПЕРЕМЕННЫЕ ---
+        let gameState = 'MENU'; 
+        let population = 0; let combo = 0; let sessionCoins = 0; 
+        const MAX_FLOORS = 25; 
+
+        const blockW = 120; const blockH = 80;
+        let blocks = []; let fallingBlocks = []; 
+        let activeBlock = null; 
+        let parachutes = []; 
+        
+        let cameraY = canvas.height - 150; let targetCameraY = canvas.height - 150;
+        let screenShake = 0;
+        
+        // Физика крана
+        let ropeLength = 150; let craneTick = 0; let craneSpeed = 0.03; let maxAngle = Math.PI / 3.5;
+
+        // Баланс башни
+        let towerBalance = 0; let towerTiltAngle = 0; let isCollapsing = false;
+
+        let particles = []; let floatTexts = [];
+        let bgStars = [];
+
+        // ИНИЦИАЛИЗАЦИЯ БАЗЫ (ЧТОБЫ НЕ КРАШИЛОСЬ В МЕНЮ)
+        blocks.push({ x: canvas.width / 2, y: canvas.height - 50, w: blockW + 20, h: 60, type: 'base' });
+
+        function initStars() {
+            for(let i=0; i<100; i++) bgStars.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height*2, s: Math.random()*2, op: Math.random() });
+        }
+        initStars();
+
+        function triggerShake(val) { screenShake = Math.max(screenShake, val); }
+        function spawnText(x, y, txt, col, sz=20) { floatTexts.push({x, y, txt, col, sz, life: 1, vy: -2, scale: 0.5}); }
+
+        function spawnParachute(targetX, targetY) {
+            parachutes.push({
+                x: targetX + (Math.random() * 60 - 30), 
+                y: cameraY - 50, 
+                targetY: targetY,
+                vy: 2 + Math.random() * 2,
+                color: ['#00f3ff', '#ff003c', '#ffea00'][Math.floor(Math.random()*3)]
+            });
+        }
+
+        function createExplosion(x, y, color, count, isPerfect=false) {
+            if(isPerfect) triggerShake(15);
+            for(let i=0; i<count; i++) particles.push({ x: x + (Math.random()-0.5)*blockW, y: y + blockH/2, vx:(Math.random()-0.5)*10, vy:(Math.random()-0.5)*10, life:1, decay:0.03, color, size:Math.random()*6+2 });
+        }
+
+        window.startGame = function() {
+            document.getElementById('menuOverlay').style.display = 'none';
+            resetGame();
+        }
+
+        function resetGame() {
+            population = 0; combo = 0; sessionCoins = 0; 
+            blocks = []; fallingBlocks = []; floatTexts = []; particles = []; parachutes = [];
+            cameraY = canvas.height - 150; targetCameraY = canvas.height - 150; 
+            craneTick = 0; craneSpeed = 0.03; towerBalance = 0; towerTiltAngle = 0; isCollapsing = false;
+            
+            blocks.push({ x: canvas.width / 2, y: canvas.height - 50, w: blockW + 20, h: 60, type: 'base' });
+            
+            spawnBlock(); gameState = 'PLAYING';
+            document.getElementById('gameOverOverlay').style.display = 'none';
+        }
+
+        function spawnBlock() {
+            let isGolden = Math.random() > 0.85; 
+            let isRoof = blocks.length >= MAX_FLOORS;
+            
+            activeBlock = { 
+                x: canvas.width / 2, y: cameraY - ropeLength - blockH, 
+                w: isRoof ? blockW + 10 : blockW, h: isRoof ? 100 : blockH, 
+                isDropping: false, vy: 0, angle: 0,
+                type: isRoof ? 'roof' : (isGolden ? 'gold' : 'normal')
+            };
+        }
+
+        function collapseTower() {
+            isCollapsing = true; triggerShake(30);
+            for (let i = 1; i < blocks.length; i++) {
+                let b = blocks[i];
+                b.vy = -5 + Math.random() * 5; b.vx = (Math.random() - 0.5) * 15; b.va = (Math.random() - 0.5) * 0.2;
+                fallingBlocks.push(b);
+            }
+            blocks = [blocks[0]];
+            
+            setTimeout(() => {
+                gameState = 'GAME_OVER';
+                document.getElementById('gameOverOverlay').style.display = 'flex';
+                document.getElementById('goTitle').innerText = 'БАШНЯ РУХНУЛА!';
+                document.getElementById('goTitle').style.color = '#ff003c';
+                document.getElementById('goStats').innerText = `Построено: ${fallingBlocks.length} эт.\nЛюдей: ${population} 👥`;
+                // Отправка на бэкенд
+                fetch(`${BACKEND_URL}/save_score`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telegram_id: user.id, username: user.username, score: fallingBlocks.length, coins: sessionCoins, game: 'city_bloxx' }) }).catch(e=>{});
+            }, 1500);
+        }
+
+        function winGame() {
+            isCollapsing = true; 
+            sessionCoins += 50 + (population * 2); 
+            
+            setTimeout(() => {
+                gameState = 'GAME_OVER';
+                document.getElementById('gameOverOverlay').style.display = 'flex';
+                document.getElementById('goTitle').innerText = 'СТРОЙКА ЗАВЕРШЕНА!';
+                document.getElementById('goTitle').style.color = '#00f3ff';
+                document.getElementById('goStats').innerText = `Этажей: ${blocks.length-1}/${MAX_FLOORS}\nНаселение: ${population} 👥\nЗаработано: +${sessionCoins} 🪙`;
+                fetch(`${BACKEND_URL}/save_score`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telegram_id: user.id, username: user.username, score: blocks.length, coins: sessionCoins, game: 'city_bloxx' }) }).catch(e=>{});
+            }, 1500);
+        }
+
+        function updateLogic() {
+            if (gameState !== 'PLAYING') return;
+
+            document.getElementById('uiPop').innerText = population;
+            document.getElementById('uiCombo').innerText = combo > 1 ? `🔥 x${combo}` : '';
+            document.getElementById('uiProgress').style.height = `${(Math.min(blocks.length, MAX_FLOORS) / MAX_FLOORS) * 100}%`;
+
+            if (screenShake > 0) screenShake *= 0.85; if (screenShake < 0.5) screenShake = 0;
+            
+            if (blocks.length > 0) {
+                let topBlockY = blocks[blocks.length - 1].y;
+                targetCameraY = topBlockY - canvas.height * 0.4; 
+                cameraY += (targetCameraY - cameraY) * 0.08; 
+            }
+
+            let targetTilt = (towerBalance / 100) * (Math.PI / 10); 
+            towerTiltAngle += (targetTilt - towerTiltAngle) * 0.1;
+
+            parachutes.forEach(p => {
+                p.y += p.vy; 
+                p.x += Math.sin(frameCount * 0.1 + p.targetY) * 2;
+            });
+            parachutes = parachutes.filter(p => p.y < p.targetY);
+
+            fallingBlocks.forEach(b => { b.vy += 0.8; b.y += b.vy; b.x += b.vx; b.angle += b.va; });
+            fallingBlocks = fallingBlocks.filter(b => b.y < cameraY + canvas.height + 200);
+
+            particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.4; p.life -= p.decay; }); particles = particles.filter(p => p.life > 0);
+            floatTexts.forEach(t=>{ t.y+=t.vy; t.life-=0.02; if(t.scale<1) t.scale+=0.1; }); floatTexts = floatTexts.filter(t=>t.life>0);
+
+            if (activeBlock && !isCollapsing) {
+                if (!activeBlock.isDropping) {
+                    craneTick += craneSpeed;
+                    let angle = Math.sin(craneTick) * maxAngle;
+                    let pivotX = canvas.width / 2; let pivotY = cameraY - 100; 
+                    
+                    activeBlock.x = pivotX + Math.sin(angle) * ropeLength;
+                    activeBlock.y = pivotY + Math.cos(angle) * ropeLength; 
+                } else {
+                    activeBlock.vy += 1.2; 
+                    activeBlock.y += activeBlock.vy;
+
+                    let topBlock = blocks[blocks.length - 1];
+                    let visualTopX = topBlock.x + Math.sin(towerTiltAngle) * (canvas.height - topBlock.y);
+
+                    if (activeBlock.y + activeBlock.h / 2 >= topBlock.y - topBlock.h / 2) {
+                        let distance = activeBlock.x - visualTopX; 
+                        let absDist = Math.abs(distance);
+                        
+                        if (absDist < activeBlock.w / 2 + 10) {
+                            let isPerfect = false; let addedPop = 0;
+                            towerBalance += distance * 0.5; 
+
+                            if (absDist <= 15) { 
+                                activeBlock.x = visualTopX; isPerfect = true; combo++;
+                                addedPop = (activeBlock.type === 'gold' ? 50 : 20) + (combo * 5); 
+                                spawnText(activeBlock.x, activeBlock.y - 40, `PERFECT! +${addedPop}`, '#ffea00', 26);
+                                for(let i=0; i<3; i++) spawnParachute(activeBlock.x, activeBlock.y);
+                            } else if (absDist <= 35) { 
+                                combo = 0; addedPop = activeBlock.type === 'gold' ? 20 : 10; 
+                                spawnText(activeBlock.x, activeBlock.y - 40, `GOOD +${addedPop}`, '#00f3ff', 20);
+                            } else { 
+                                combo = 0; addedPop = 5; 
+                                spawnText(activeBlock.x, activeBlock.y - 40, `OK`, '#fff', 16);
+                            }
+
+                            population += addedPop;
+                            activeBlock.y = topBlock.y - (topBlock.type === 'base' ? 60 : blockH);
+                            blocks.push(activeBlock);
+                            
+                            createExplosion(activeBlock.x, activeBlock.y, isPerfect ? '#ffea00' : '#fff', isPerfect?40:15, isPerfect);
+
+                            if (Math.abs(towerBalance) > 100) {
+                                collapseTower();
+                            } else if (activeBlock.type === 'roof') {
+                                winGame();
+                            } else {
+                                craneSpeed = Math.min(0.08, craneSpeed + 0.001); 
+                                activeBlock = null;
+                                setTimeout(spawnBlock, 400); 
+                            }
+
+                        } else {
+                            combo = 0; triggerShake(20);
+                            spawnText(activeBlock.x, activeBlock.y, "ПРОМАХ!", '#ff003c', 30);
+                            
+                            activeBlock.vx = (activeBlock.x > visualTopX) ? 4 : -4; 
+                            activeBlock.va = (activeBlock.x > visualTopX) ? 0.1 : -0.1;
+                            fallingBlocks.push(activeBlock);
+                            activeBlock = null;
+
+                            towerBalance += (distance > 0 ? 20 : -20);
+                            if (Math.abs(towerBalance) > 100) collapseTower();
+                            else setTimeout(spawnBlock, 800);
+                        }
+                    }
+                }
+            }
+            frameCount++;
+        }
+
+        function drawBlock(ctx, b, isFalling) {
+            ctx.save(); ctx.translate(b.x, b.y);
+            if (isFalling) ctx.rotate(b.angle);
+
+            if (b.type === 'base') {
+                ctx.fillStyle = '#151b2a'; ctx.fillRect(-b.w/2, -b.h/2, b.w, b.h);
+                ctx.strokeStyle = '#00f3ff'; ctx.lineWidth = 3; ctx.strokeRect(-b.w/2, -b.h/2, b.w, b.h);
+            } else if (b.type === 'roof') {
+                ctx.fillStyle = '#ff003c';
+                ctx.beginPath(); ctx.moveTo(-b.w/2, b.h/2); ctx.lineTo(b.w/2, b.h/2); ctx.lineTo(0, -b.h/2); ctx.fill();
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.stroke();
+            } else {
+                let color = b.type === 'gold' ? '#ffea00' : '#282d3c';
+                let stroke = b.type === 'gold' ? '#fff' : '#00f3ff';
+                
+                ctx.fillStyle = color; ctx.fillRect(-b.w/2, -b.h/2, b.w, b.h);
+                ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.strokeRect(-b.w/2, -b.h/2, b.w, b.h);
+                
+                ctx.fillStyle = b.type === 'gold' ? '#fff' : '#00f3ff';
+                for(let i=0; i<3; i++) {
+                    ctx.fillRect(-b.w/2 + 15 + i*35, -b.h/2 + 15, 20, 30);
+                }
+            }
+            ctx.restore();
+        }
+
+        let frameCount = 0;
+        function draw() {
+            ctx.save(); ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake);
+            ctx.fillStyle = '#020204'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#fff';
+            bgStars.forEach(s => {
+                let sy = (s.y - cameraY * 0.5) % (canvas.height*2);
+                if (sy < 0) sy += canvas.height*2;
+                ctx.globalAlpha = s.op; ctx.beginPath(); ctx.arc(s.x, sy - canvas.height, s.s, 0, Math.PI*2); ctx.fill();
+            }); ctx.globalAlpha = 1;
+
+            ctx.fillStyle = '#0a0d16';
+            ctx.fillRect(0, canvas.height - 100 - cameraY*0.2, canvas.width, canvas.height);
+
+            if (activeBlock && !activeBlock.isDropping && !isCollapsing) {
+                let pivotX = canvas.width / 2; let pivotY = cameraY - 100;
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(pivotX, pivotY - cameraY); ctx.lineTo(activeBlock.x, activeBlock.y - activeBlock.h/2 - cameraY); ctx.stroke();
+            }
+
+            ctx.save(); ctx.translate(0, -cameraY);
+
+            if (blocks.length > 0) {
+                ctx.save();
+                ctx.translate(canvas.width / 2, blocks[0].y); 
+                ctx.rotate(towerTiltAngle);
+                ctx.translate(-canvas.width / 2, -blocks[0].y);
+                blocks.forEach(b => drawBlock(ctx, b, false));
+                ctx.restore();
+            }
+
+            if (activeBlock) drawBlock(ctx, activeBlock, false);
+            fallingBlocks.forEach(b => drawBlock(ctx, b, true));
+
+            parachutes.forEach(p => {
+                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p.x, p.y, 8, Math.PI, 0); ctx.fill(); 
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.x-8, p.y); ctx.lineTo(p.x, p.y+15); ctx.lineTo(p.x+8, p.y); ctx.stroke(); 
+                ctx.fillStyle = p.color; ctx.fillRect(p.x-3, p.y+15, 6, 10); 
+            });
+
+            particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); }); ctx.globalAlpha = 1;
+            
+            ctx.restore(); 
+
+            floatTexts.forEach(ft => { 
+                ctx.save(); ctx.translate(ft.x, ft.y - cameraY); ctx.scale(ft.scale, ft.scale);
+                ctx.fillStyle=ft.col; ctx.globalAlpha=Math.max(0, ft.life); ctx.font=`900 ${ft.sz}px Montserrat`; ctx.textAlign='center'; 
+                ctx.shadowBlur=10; ctx.shadowColor='#000'; ctx.fillText(ft.txt, 0, 0); 
+                ctx.restore();
+            });
+
+            ctx.restore(); 
+
+            updateLogic(); requestAnimationFrame(draw);
+        }
+
+        window.addEventListener('touchstart', (e) => {
+            if (e.target.id === 'backBtn' || document.querySelector('.overlay').style.display === 'flex') return;
+            if (gameState === 'PLAYING' && activeBlock && !activeBlock.isDropping && !isCollapsing) {
+                activeBlock.isDropping = true; 
+            }
+        }, { passive: false });
+
+        draw();
+    </script>
+</body>
+</html>

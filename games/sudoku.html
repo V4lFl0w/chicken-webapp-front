@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>V-Hub: Sudoku</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #090b12;
+            --bg-board: #151b2a;
+            --accent: #00e0c6;
+            --accent-dim: rgba(0, 224, 198, 0.15);
+            --accent-highlight: rgba(0, 224, 198, 0.3);
+            --danger: #ff5b77;
+            --text-main: #f6f8ff;
+            --text-muted: #8691ad;
+            --border-light: rgba(255,255,255,0.08);
+            --border-heavy: rgba(0, 224, 198, 0.5);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Montserrat', sans-serif; user-select: none; touch-action: manipulation; }
+
+        body {
+            background: linear-gradient(180deg, #0a0d16 0%, #090b12 100%);
+            color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        /* Шапка */
+        .header {
+            display: flex; justify-content: space-between; align-items: center; padding: 16px 20px;
+            background: rgba(9,11,18,0.8); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-light);
+        }
+        .back-btn { background: rgba(255,255,255,0.05); border: 1px solid var(--border-light); color: #fff; width: 40px; height: 40px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 18px; cursor: pointer; transition: 0.1s;}
+        .back-btn:active { transform: scale(0.9); }
+        .stats-top { display: flex; gap: 15px; font-weight: 800; font-size: 16px; }
+        .mistakes { color: var(--danger); }
+        .timer { color: var(--accent); width: 60px; text-align: right; }
+
+        /* Игровое поле */
+        .board-container { flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .sudoku-board {
+            display: grid; grid-template-columns: repeat(9, 1fr); width: 100%; max-width: 400px;
+            aspect-ratio: 1/1; background: var(--bg-board); border: 2px solid var(--border-heavy);
+            border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(0, 224, 198, 0.1);
+        }
+
+        .cell {
+            border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: center; align-items: center;
+            font-size: 24px; font-weight: 800; color: var(--text-main); cursor: pointer; transition: background 0.1s, color 0.1s;
+        }
+        /* Жирные линии для квадратов 3х3 */
+        .cell:nth-child(3n) { border-right: 2px solid var(--border-heavy); }
+        .cell:nth-child(9n) { border-right: none; }
+        .cell:nth-child(n+19):nth-child(-n+27),
+        .cell:nth-child(n+46):nth-child(-n+54) { border-bottom: 2px solid var(--border-heavy); }
+
+        /* Состояния ячеек */
+        .cell.fixed { color: var(--text-muted); font-weight: 600; background: rgba(0,0,0,0.2); }
+        .cell.highlight { background: var(--accent-dim); }
+        .cell.selected { background: var(--accent-highlight); box-shadow: inset 0 0 10px rgba(0,224,198,0.5); }
+        .cell.error { color: var(--danger); animation: shake 0.3s; background: rgba(255, 91, 119, 0.15); }
+        .cell.user-input { color: var(--accent); text-shadow: 0 0 8px rgba(0,224,198,0.5); }
+
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+        /* Клавиатура */
+        .numpad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 0 20px 30px; max-width: 440px; margin: 0 auto; width: 100%; }
+        .num-btn {
+            background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
+            border: 1px solid var(--border-light); border-radius: 14px; height: 55px;
+            display: flex; justify-content: center; align-items: center; font-size: 24px; font-weight: 900; color: #fff; cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: 0.1s;
+        }
+        .num-btn:active { transform: scale(0.92); background: var(--accent); color: #000; border-color: var(--accent); }
+        .num-btn.action { font-size: 18px; grid-column: span 2; background: rgba(255,91,119,0.1); color: var(--danger); border-color: rgba(255,91,119,0.3); }
+
+        /* Модалка завершения */
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.9); backdrop-filter: blur(10px); z-index: 200; display: none; flex-direction: column; justify-content: center; align-items: center; opacity: 0; }
+        .modal-content { text-align: center; background: #151b2a; padding: 40px 30px; border-radius: 24px; border: 1px solid var(--border-heavy); box-shadow: 0 20px 50px rgba(0,224,198,0.2); }
+        .modal h1 { font-size: 32px; font-weight: 900; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; }
+        .modal p { color: var(--text-muted); margin-bottom: 20px; font-size: 16px; font-weight: 600; }
+        .modal .reward { font-size: 28px; font-weight: 900; color: #ffcc44; margin-bottom: 30px; text-shadow: 0 0 15px rgba(255,204,68,0.5); }
+        .btn-primary { background: linear-gradient(135deg, var(--accent) 0%, #56a6ff 100%); border: none; color: #000; font-size: 18px; font-weight: 900; padding: 16px 40px; border-radius: 14px; cursor: pointer; width: 100%; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <button class="back-btn" onclick="window.history.back()">❮</button>
+        <div class="stats-top">
+            <div class="mistakes">Ошибки: <span id="mistakeCount">0</span>/3</div>
+            <div class="timer" id="timeCount">00:00</div>
+        </div>
+    </div>
+
+    <div class="board-container">
+        <div class="sudoku-board" id="board"></div>
+    </div>
+
+    <div class="numpad">
+        <button class="num-btn" onclick="inputNumber(1)">1</button>
+        <button class="num-btn" onclick="inputNumber(2)">2</button>
+        <button class="num-btn" onclick="inputNumber(3)">3</button>
+        <button class="num-btn" onclick="inputNumber(4)">4</button>
+        <button class="num-btn" onclick="inputNumber(5)">5</button>
+        <button class="num-btn" onclick="inputNumber(6)">6</button>
+        <button class="num-btn" onclick="inputNumber(7)">7</button>
+        <button class="num-btn" onclick="inputNumber(8)">8</button>
+        <button class="num-btn" onclick="inputNumber(9)">9</button>
+        <button class="num-btn action" onclick="eraseCell()">Стереть ⌫</button>
+    </div>
+
+    <div class="modal" id="endModal">
+        <div class="modal-content">
+            <h1 id="endTitle">СИСТЕМА ВЗЛОМАНА</h1>
+            <p id="endDesc">Судоку успешно решено!</p>
+            <div class="reward" id="endReward">+50 🪙</div>
+            <button class="btn-primary" onclick="window.history.back()">ВЕРНУТЬСЯ В V-HUB</button>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.setHeaderColor('#090b12');
+        const user = tg.initDataUnsafe?.user || { id: 12345, username: "Guest" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+
+        // База из пары игр (0 = пустая клетка) для надежности работы 
+        const puzzles = [
+            {
+                board: "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+                solved:"534678912672195348198342567859761423426853791713924856961537284287419635345286179"
+            },
+            {
+                board: "000260701680070090190004500820100040004602900050003028009300074040050036703018000",
+                solved:"435269781682571493197834562826195347374682915951743628519326874248957136763418259"
+            }
+        ];
+
+        let currentLvl = puzzles[Math.floor(Math.random() * puzzles.length)];
+        let boardArr = currentLvl.board.split('');
+        let solvedArr = currentLvl.solved.split('');
+        let cells = [];
+        let selectedIndex = -1;
+        let mistakes = 0;
+        let time = 0;
+        let timerInterval;
+        let gameActive = true;
+
+        const boardEl = document.getElementById('board');
+
+        // Инициализация сетки
+        function initBoard() {
+            for (let i = 0; i < 81; i++) {
+                let cell = document.createElement('div');
+                cell.className = 'cell';
+                
+                if (boardArr[i] !== '0') {
+                    cell.innerText = boardArr[i];
+                    cell.classList.add('fixed');
+                }
+                
+                cell.addEventListener('click', () => selectCell(i));
+                boardEl.appendChild(cell);
+                cells.push(cell);
+            }
+            startTimer();
+        }
+
+        // Выделение ячейки, подсветка строки, столбца и квадрата 3х3
+        function selectCell(index) {
+            if (!gameActive) return;
+            
+            cells.forEach(c => { c.classList.remove('selected', 'highlight'); });
+            
+            let row = Math.floor(index / 9);
+            let col = index % 9;
+            let boxRow = Math.floor(row / 3) * 3;
+            let boxCol = Math.floor(col / 3) * 3;
+
+            for (let i = 0; i < 81; i++) {
+                let r = Math.floor(i / 9);
+                let c = i % 9;
+                if (r === row || c === col || (r >= boxRow && r < boxRow + 3 && c >= boxCol && c < boxCol + 3)) {
+                    cells[i].classList.add('highlight');
+                }
+                // Подсветка одинаковых цифр
+                if (cells[i].innerText !== '' && cells[i].innerText === cells[index].innerText) {
+                    cells[i].classList.add('highlight');
+                }
+            }
+
+            cells[index].classList.remove('highlight');
+            cells[index].classList.add('selected');
+            selectedIndex = index;
+        }
+
+        // Ввод цифры
+        function inputNumber(num) {
+            if (selectedIndex === -1 || !gameActive) return;
+            let cell = cells[selectedIndex];
+            
+            if (cell.classList.contains('fixed')) return;
+
+            // Проверка на правильность
+            if (num.toString() === solvedArr[selectedIndex]) {
+                cell.innerText = num;
+                cell.classList.remove('error');
+                cell.classList.add('user-input');
+                boardArr[selectedIndex] = num.toString();
+                
+                // Анимация успешного ввода GSAP
+                gsap.fromTo(cell, {scale: 1.5, color: '#fff'}, {scale: 1, color: 'var(--accent)', duration: 0.3});
+                
+                checkWin();
+            } else {
+                cell.innerText = num;
+                cell.classList.add('error');
+                mistakes++;
+                document.getElementById('mistakeCount').innerText = mistakes;
+                if (mistakes >= 3) endGame(false);
+            }
+        }
+
+        // Стирание (только если это ошибка)
+        function eraseCell() {
+            if (selectedIndex === -1 || !gameActive) return;
+            let cell = cells[selectedIndex];
+            if (!cell.classList.contains('fixed') && cell.classList.contains('error')) {
+                cell.innerText = '';
+                cell.classList.remove('error');
+            }
+        }
+
+        function checkWin() {
+            if (!boardArr.includes('0') && document.querySelectorAll('.error').length === 0) {
+                endGame(true);
+            }
+        }
+
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                time++;
+                let m = Math.floor(time / 60).toString().padStart(2, '0');
+                let s = (time % 60).toString().padStart(2, '0');
+                document.getElementById('timeCount').innerText = `${m}:${s}`;
+            }, 1000);
+        }
+
+        function endGame(isWin) {
+            gameActive = false;
+            clearInterval(timerInterval);
+            let modal = document.getElementById('endModal');
+            let reward = isWin ? 50 : 0;
+            
+            document.getElementById('endTitle').innerText = isWin ? 'СИСТЕМА ВЗЛОМАНА' : 'КРИТИЧЕСКАЯ ОШИБКА';
+            document.getElementById('endTitle').style.color = isWin ? 'var(--accent)' : 'var(--danger)';
+            document.getElementById('endDesc').innerText = isWin ? `Время: ${document.getElementById('timeCount').innerText}` : 'Допущено 3 ошибки.';
+            document.getElementById('endReward').innerText = isWin ? `+${reward} 🪙` : '0 🪙';
+            
+            modal.style.display = 'flex';
+            gsap.fromTo(modal, {opacity: 0, scale: 0.9}, {opacity: 1, scale: 1, duration: 0.4, ease: "back.out(1.2)"});
+
+            if (isWin) {
+                // Отправка на бэкенд
+                fetch(`${BACKEND_URL}/save_score`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: user.id, username: user.username, score: 0, coins: reward, game: 'sudoku' })
+                }).catch(e=>{});
+            }
+        }
+
+        // Запуск
+        initBoard();
+    </script>
+</body>
+</html>

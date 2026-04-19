@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>V-Hub: Cyber Build</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #0b0e14; overflow: hidden; font-family: 'Montserrat', sans-serif; user-select: none; color: white; }
+        
+        /* ВЕРХНЯЯ ПАНЕЛЬ */
+        #topUI {
+            position: absolute; top: 0; left: 0; width: 100%; height: 70px;
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, transparent 100%);
+            display: flex; flex-direction: column; justify-content: center;
+            padding: 5px 15px; box-sizing: border-box; z-index: 100;
+        }
+        .stats-row { display: flex; justify-content: space-between; align-items: center; width: 100%; font-size: 18px; font-weight: 900;}
+        .stat-cred { color: #ffea00; text-shadow: 0 2px 4px rgba(0,0,0,0.8);}
+        .stat-mat { color: #b534fa; text-shadow: 0 2px 4px rgba(0,0,0,0.8);}
+        .stat-goal { font-size: 12px; color: #00f3ff; text-transform: uppercase; margin-top: 4px; text-align: center;}
+
+        /* СЕТКА УЧАСТКОВ */
+        .city-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 15px;
+            padding: 15px; margin-top: 70px; max-height: calc(100vh - 220px);
+            overflow-y: auto; overflow-x: hidden;
+        }
+        .city-grid::-webkit-scrollbar { display: none; }
+
+        .plot {
+            background: rgba(255,255,255,0.05); border: 2px dashed #485460;
+            border-radius: 16px; aspect-ratio: 1; position: relative;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; transition: 0.2s; box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+        }
+        .plot.selected { border-color: #00f3ff; background: rgba(0,243,255,0.1); transform: scale(1.03); z-index: 10;}
+        .plot.done { border-style: solid; background: rgba(47,54,64,0.8); }
+
+        .b-icon { font-size: 40px; margin-bottom: 5px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));}
+        .b-name { font-size: 12px; font-weight: 700; color: #dcdde1; text-align: center; }
+        .stars { position: absolute; top: 10px; font-size: 14px; letter-spacing: 2px; }
+
+        /* ПРОГРЕСС СТРОЙКИ */
+        .prog-wrap { width: 80%; height: 8px; background: #1e272e; border-radius: 4px; overflow: hidden; margin-top: 10px; border: 1px solid #485460;}
+        .prog-fill { height: 100%; width: 0%; background: #0be881; box-shadow: 0 0 10px #0be881;}
+
+        /* НИЖНЯЯ ПАНЕЛЬ ДЕЙСТВИЙ */
+        #bottomUI {
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 140px;
+            background: rgba(11,14,20,0.95); border-top: 2px solid #00f3ff;
+            display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; z-index: 200;
+            backdrop-filter: blur(10px);
+        }
+        .panel-header { font-size: 14px; color: #00f3ff; font-weight: 900; text-transform: uppercase; margin-bottom: 10px; text-align: center;}
+        .panel-actions { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;}
+        .panel-actions::-webkit-scrollbar { display: none; }
+        
+        .btn-action {
+            flex-shrink: 0; min-width: 110px; padding: 10px; border-radius: 12px; border: none;
+            font-weight: 900; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-size: 12px; cursor: pointer; text-shadow: 0 1px 2px rgba(0,0,0,0.8); line-height: 1.4; box-shadow: 0 4px 0 rgba(0,0,0,0.4);
+        }
+        .btn-action:active { transform: translateY(4px); box-shadow: 0 0 0 transparent; }
+        
+        .b-cap { background: linear-gradient(135deg, #3c40c6, #575fcf); }
+        .b-house { background: linear-gradient(135deg, #0fb9b1, #2bcbba); }
+        .b-tower { background: linear-gradient(135deg, #e67e22, #f39c12); }
+        .b-fac { background: linear-gradient(135deg, #8e44ad, #9b59b6); }
+        .b-upg { background: linear-gradient(135deg, #0be881, #20bf6b); color: #000; text-shadow: none;}
+        .b-sell { background: linear-gradient(135deg, #ff3f34, #ff5e57); }
+        .btn-buy-mat { width: 100%; background: linear-gradient(135deg, #2d98da, #3867d6); }
+
+        /* ВСПЛЫВАЮЩИЙ ТЕКСТ */
+        .float-txt { position: absolute; font-weight: 900; font-size: 20px; text-shadow: 0 2px 4px #000; pointer-events: none; z-index: 500; transform: translateX(-50%); white-space: nowrap;}
+        
+        /* АЛЕРТЫ И МЕНЮ */
+        #alertToast {
+            position: absolute; left: 50%; transform: translateX(-50%); width: 90%; max-width: 300px;
+            background: rgba(255, 0, 60, 0.9); box-shadow: 0 10px 30px rgba(255, 0, 60, 0.6); border: 2px solid #fff; pointer-events: none;
+            border-radius: 16px; padding: 15px; z-index: 400; text-align: center; font-weight: bold; text-transform: uppercase;
+            top: -100px; transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #alertToast.show { top: 80px; }
+
+        .overlay { position: fixed; inset: 0; background: rgba(5, 5, 10, 0.95); z-index: 600; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; backdrop-filter: blur(15px); }
+        .overlay h1 { color: #fff; font-size: 38px; margin-bottom: 10px; text-transform: uppercase; text-shadow: 0 0 20px rgba(0,243,255,0.8); }
+        .btn-primary { background: linear-gradient(135deg, #00f3ff 0%, #0066ff 100%); color: #000; padding: 15px 40px; border-radius: 14px; font-size: 18px; font-weight: 900; border: none; box-shadow: 0 6px 0 #0044aa; cursor: pointer; text-transform: uppercase; margin-bottom: 15px; width: 250px;}
+        .btn-primary:active { transform: translateY(6px); box-shadow: 0 0 0 transparent; }
+    </style>
+</head>
+<body>
+
+    <div id="topUI">
+        <div class="stats-row">
+            <div class="stat-cred"><span id="credUi">2000</span> 🪙</div>
+            <div class="stat-mat"><span id="matUi">200</span> 🧱</div>
+            <button class="btn-sm" style="position: absolute; right: 15px; top: 15px;" onclick="window.location.href='../index.html'">В ХАБ</button>
+        </div>
+        <div class="stat-goal" id="goalUi">ЦЕЛЬ: 30000 🪙</div>
+    </div>
+
+    <div class="city-grid" id="cityGrid">
+        </div>
+
+    <div id="bottomUI">
+        <div class="panel-header" id="panelInfo">Выберите участок</div>
+        <div class="panel-actions" id="panelActions">
+            <button class="btn-action btn-buy-mat" onclick="buyMaterials()">КУПИТЬ 100 🧱<br>За 1000 🪙</button>
+        </div>
+    </div>
+
+    <div id="alertToast"><span id="alertText">Внимание!</span></div>
+
+    <div id="endOverlay" class="overlay">
+        <h1 style="color:#0be881; text-shadow: 0 0 20px #0be881;">ПРОЕКТ СДАН!</h1>
+        <p style="font-size: 16px; font-weight: bold; color: #dcdde1; margin-bottom: 30px;">Ты заработал 30,000 🪙.<br>В Хаб начислено +1000 🪙!</p>
+        <button class="btn-primary" onclick="window.location.href='../index.html'">В ХАБ</button>
+        <button class="btn-primary" style="background: transparent; color: #fff; border: 2px solid #fff; box-shadow: none;" onclick="location.reload()">ИГРАТЬ ЕЩЕ</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp; tg.expand(); if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        tg.setHeaderColor('#0b0e14');
+        const user = tg.initDataUnsafe?.user || { id: 12345, username: "Builder" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+
+        // Экономика
+        let credits = 2000;
+        let materials = 200;
+        let selectedPlotId = null;
+        let gameState = 'PLAYING';
+        const GOAL_CREDITS = 30000;
+
+        // База данных зданий
+        const BUILDINGS = {
+            capsule: { name: 'Сфера', icon: '⛺', costC: 500, costM: 50, rent: [100, 150, 200], upCost: 50, time: 2 },
+            house: { name: 'Неон-Дом', icon: '🏠', costC: 1500, costM: 150, rent: [300, 450, 600], upCost: 150, time: 4 },
+            tower: { name: 'Башня', icon: '🏢', costC: 5000, costM: 500, rent: [1000, 1500, 2000], upCost: 500, time: 6 },
+            factory: { name: 'Синтезатор', icon: '🏭', costC: 1000, costM: 0, rent: [0, 0, 0], matGen: [20, 40, 60], upCost: 100, time: 3 }
+        };
+
+        // Генерация 8 участков
+        const plots = Array(8).fill(null).map((_, i) => ({
+            id: i, status: 'empty', type: null, level: 1, el: null
+        }));
+
+        function initPlots() {
+            const grid = document.getElementById('cityGrid');
+            plots.forEach(p => {
+                let div = document.createElement('div');
+                div.id = `plot-${p.id}`;
+                div.onclick = () => selectPlot(p.id);
+                grid.appendChild(div);
+                p.el = div;
+            });
+            updatePlotsVisuals();
+        }
+
+        function updatePlotsVisuals() {
+            plots.forEach(p => {
+                p.el.className = `plot ${selectedPlotId === p.id ? 'selected' : ''} ${p.status}`;
+                if (p.status === 'empty') {
+                    p.el.innerHTML = '<div class="b-icon" style="opacity:0.2">➕</div><div class="b-name">Пустой участок</div>';
+                } else if (p.status === 'done') {
+                    let b = BUILDINGS[p.type];
+                    let stars = '⭐'.repeat(p.level);
+                    p.el.innerHTML = `<div class="stars">${stars}</div><div class="b-icon">${b.icon}</div><div class="b-name">${b.name}</div>`;
+                }
+            });
+        }
+
+        function updateTopUI() {
+            document.getElementById('credUi').innerText = credits;
+            document.getElementById('matUi').innerText = materials;
+            
+            if (credits >= GOAL_CREDITS && gameState === 'PLAYING') {
+                gameState = 'WON';
+                document.getElementById('endOverlay').style.display = 'flex';
+                fetch(`${BACKEND_URL}/save_score`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telegram_id: user.id, username: user.username, score: 0, coins: 1000, game: 'build_a_lot' }) }).catch(e=>{});
+            }
+        }
+
+        function selectPlot(id) {
+            if(plots[id].status === 'building') return; // Запрет клика по стройке
+            selectedPlotId = id;
+            updatePlotsVisuals();
+            updateBottomUI();
+        }
+
+        function updateBottomUI() {
+            const pInfo = document.getElementById('panelInfo');
+            const pActions = document.getElementById('panelActions');
+            
+            if (selectedPlotId === null) {
+                pInfo.innerHTML = 'Закупка Ресурсов';
+                pActions.innerHTML = `<button class="btn-action btn-buy-mat" onclick="buyMaterials()">КУПИТЬ 100 🧱<br>За 1000 🪙</button>`;
+                return;
+            }
+            
+            const plot = plots[selectedPlotId];
+            if (plot.status === 'empty') {
+                pInfo.innerHTML = 'Строительство';
+                pActions.innerHTML = `
+                    <button class="btn-action b-cap" onclick="build('capsule')">Сфера<br>500🪙 50🧱</button>
+                    <button class="btn-action b-house" onclick="build('house')">Дом<br>1500🪙 150🧱</button>
+                    <button class="btn-action b-tower" onclick="build('tower')">Башня<br>5000🪙 500🧱</button>
+                    <button class="btn-action b-fac" onclick="build('factory')">Завод<br>1000🪙</button>
+                `;
+            } else if (plot.status === 'done') {
+                let b = BUILDINGS[plot.type];
+                pInfo.innerHTML = `Управление: ${b.name} (Ур. ${plot.level})`;
+                let html = '';
+                if (plot.level < 3) {
+                    html += `<button class="btn-action b-upg" onclick="upgradePlot()">Апгрейд<br>-${b.upCost} 🧱</button>`;
+                }
+                let sellPrice = Math.floor((b.costC + (plot.level-1)*b.upCost*10) * 0.7);
+                html += `<button class="btn-action b-sell" onclick="sellPlot(${sellPrice})">Продать<br>+${sellPrice} 🪙</button>`;
+                
+                // Кнопка сброса выделения
+                html += `<button class="btn-action" style="background:#1e272e;" onclick="selectedPlotId = null; updatePlotsVisuals(); updateBottomUI();">Отмена</button>`;
+                pActions.innerHTML = html;
+            }
+        }
+
+        function showAlert(text, color = '#ff003c') {
+            let toast = document.getElementById('alertToast');
+            document.getElementById('alertText').innerText = text;
+            toast.style.background = color;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        function spawnFloat(targetEl, text, color) {
+            let rect = targetEl.getBoundingClientRect();
+            let div = document.createElement('div');
+            div.className = 'float-txt';
+            div.style.left = (rect.left + rect.width/2) + 'px';
+            div.style.top = rect.top + 'px';
+            div.innerText = text;
+            div.style.color = color;
+            document.body.appendChild(div);
+            
+            gsap.to(div, {y: -50, opacity: 0, duration: 1.5, onComplete: () => div.remove()});
+        }
+
+        // --- ДЕЙСТВИЯ ---
+        function buyMaterials() {
+            if (credits >= 1000) {
+                credits -= 1000; materials += 100;
+                updateTopUI(); showAlert("Закуплено 100 🧱", "#0be881");
+            } else { showAlert("Не хватает 🪙!", "#ff003c"); }
+        }
+
+        function build(type) {
+            let plot = plots[selectedPlotId];
+            let b = BUILDINGS[type];
+            if (credits >= b.costC && materials >= b.costM) {
+                credits -= b.costC; materials -= b.costM;
+                plot.status = 'building'; plot.type = type; plot.level = 1;
+                
+                selectedPlotId = null; // Сбрасываем фокус
+                updateTopUI(); updatePlotsVisuals(); updateBottomUI();
+                
+                plot.el.innerHTML = `<div class="b-icon">🚧</div><div class="b-name">Строительство...</div><div class="prog-wrap"><div class="prog-fill" id="prog-${plot.id}"></div></div>`;
+                
+                gsap.to(`#prog-${plot.id}`, {width: '100%', duration: b.time, ease: 'none', onComplete: () => {
+                    plot.status = 'done';
+                    updatePlotsVisuals(); updateBottomUI();
+                    spawnFloat(plot.el, "ГОТОВО!", "#00f3ff");
+                }});
+            } else { showAlert("Не хватает ресурсов!"); }
+        }
+
+        function upgradePlot() {
+            let plot = plots[selectedPlotId];
+            let b = BUILDINGS[plot.type];
+            if (materials >= b.upCost) {
+                materials -= b.upCost;
+                plot.status = 'building';
+                selectedPlotId = null;
+                updateTopUI(); updateBottomUI();
+                
+                plot.el.innerHTML = `<div class="b-icon">🚧</div><div class="b-name">Модернизация...</div><div class="prog-wrap"><div class="prog-fill" id="prog-${plot.id}"></div></div>`;
+                
+                gsap.to(`#prog-${plot.id}`, {width: '100%', duration: b.time * 0.7, ease: 'none', onComplete: () => {
+                    plot.status = 'done'; plot.level++;
+                    updatePlotsVisuals(); updateBottomUI();
+                    spawnFloat(plot.el, "УЛУЧШЕНО!", "#0be881");
+                }});
+            } else { showAlert("Не хватает 🧱!"); }
+        }
+
+        function sellPlot(price) {
+            let plot = plots[selectedPlotId];
+            credits += price;
+            plot.status = 'empty'; plot.type = null; plot.level = 1;
+            selectedPlotId = null;
+            updateTopUI(); updatePlotsVisuals(); updateBottomUI();
+            spawnFloat(plot.el, `+${price}🪙`, "#ffea00");
+        }
+
+        // --- ИГРОВОЙ ЦИКЛ (СБОР АРЕНДЫ) ---
+        setInterval(() => {
+            if(gameState !== 'PLAYING') return;
+            plots.forEach(p => {
+                if(p.status === 'done') {
+                    let b = BUILDINGS[p.type];
+                    if(p.type === 'factory') {
+                        let gen = b.matGen[p.level-1];
+                        materials += gen;
+                        spawnFloat(p.el, `+${gen} 🧱`, '#b534fa');
+                    } else {
+                        let r = b.rent[p.level-1];
+                        credits += r;
+                        spawnFloat(p.el, `+${r} 🪙`, '#ffea00');
+                    }
+                }
+            });
+            updateTopUI();
+        }, 4000); // Сбор каждые 4 секунды
+
+        initPlots(); updateBottomUI();
+    </script>
+</body>
+</html>

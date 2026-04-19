@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>V-Hub</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        :root {
+            --bg-main: #090b12;
+            --bg-soft: #101421;
+            --bg-card: #151b2a;
+            --bg-card-2: #1a2133;
+            --accent: #00e0c6;
+            --accent-2: #56a6ff;
+            --text-main: #f6f8ff;
+            --text-soft: #cfd7ec;
+            --text-muted: #8691ad;
+            --gold: #ffcc44;
+            --danger: #ff5b77;
+            --line: rgba(255,255,255,0.08);
+            --shadow: rgba(0,0,0,0.35);
+            --success: #37d67a;
+            --radius-xl: 22px;
+            --radius-lg: 18px;
+            --radius-md: 14px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+        }
+
+        html, body {
+            background:
+                radial-gradient(circle at top, rgba(86,166,255,0.12), transparent 28%),
+                radial-gradient(circle at 20% 20%, rgba(0,224,198,0.10), transparent 20%),
+                linear-gradient(180deg, #0a0d16 0%, #090b12 100%);
+            color: var(--text-main);
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            padding-bottom: 95px;
+        }
+
+        .app {
+            max-width: 760px;
+            margin: 0 auto;
+        }
+
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            padding: 16px 18px 14px;
+            backdrop-filter: blur(16px);
+            background: linear-gradient(180deg, rgba(9,11,18,0.96) 0%, rgba(9,11,18,0.78) 70%, rgba(9,11,18,0.20) 100%);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 18px;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.04) 100%),
+                linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #071019;
+            font-size: 20px;
+            font-weight: 900;
+            box-shadow:
+                0 10px 20px rgba(0,0,0,0.20),
+                inset 0 1px 0 rgba(255,255,255,0.18);
+            flex-shrink: 0;
+        }
+
+        .user-meta {
+            min-width: 0;
+        }
+
+        .welcome {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+
+        .nickname {
+            font-size: 17px;
+            font-weight: 800;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .balance-wrap {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .balance-pill {
+            min-width: 88px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%),
+                rgba(255,255,255,0.02);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 15px;
+            font-weight: 900;
+            box-shadow: 0 8px 18px rgba(0,0,0,0.20);
+        }
+
+        .balance-pill.gold {
+            color: var(--gold);
+        }
+
+        .balance-pill.crystal {
+            color: #7bd4ff;
+        }
+
+        .hero {
+            margin: 14px 18px 6px;
+            padding: 18px;
+            border-radius: 24px;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
+                linear-gradient(135deg, #131a28 0%, #0d1220 100%);
+            border: 1px solid rgba(255,255,255,0.06);
+            box-shadow:
+                0 18px 40px rgba(0,0,0,0.25),
+                inset 0 1px 0 rgba(255,255,255,0.08);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::after {
+            content: "";
+            position: absolute;
+            right: -40px;
+            top: -40px;
+            width: 140px;
+            height: 140px;
+            background: radial-gradient(circle, rgba(0,224,198,0.20), transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero-title {
+            font-size: 24px;
+            font-weight: 900;
+            line-height: 1.05;
+            margin-bottom: 8px;
+        }
+
+        .hero-subtitle {
+            color: var(--text-soft);
+            font-size: 14px;
+            line-height: 1.45;
+            max-width: 520px;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            border: none;
+            border-radius: 14px;
+            padding: 12px 16px;
+            font-size: 14px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            color: #071019;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+            box-shadow: 0 12px 22px rgba(0,0,0,0.18);
+        }
+
+        .btn-secondary {
+            color: var(--text-main);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .search-wrap {
+            padding: 14px 18px 0;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 16px;
+            padding: 14px 14px;
+        }
+
+        .search-box input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-main);
+            font-size: 15px;
+        }
+
+        .search-box input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .section {
+            padding: 18px 18px 4px;
+        }
+
+        .section-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            gap: 10px;
+        }
+
+        .section-title {
+            font-size: 22px;
+            font-weight: 900;
+            letter-spacing: 0.2px;
+        }
+
+        .section-note {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .category-row {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            scrollbar-width: none;
+        }
+
+        .category-row::-webkit-scrollbar {
+            display: none;
+        }
+
+        .chip {
+            white-space: nowrap;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.07);
+            color: var(--text-soft);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .chip.active {
+            color: #071019;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+            border-color: transparent;
+        }
+
+        .games-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            padding: 0 18px 10px;
+        }
+
+        .game-card {
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
+                linear-gradient(180deg, var(--bg-card) 0%, var(--bg-card-2) 100%);
+            border-radius: 22px;
+            padding: 16px;
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            border: 1px solid rgba(255,255,255,0.06);
+            box-shadow:
+                0 14px 30px rgba(0,0,0,0.20),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+            cursor: pointer;
+            transition: transform 0.12s ease, border-color 0.12s ease;
+            position: relative;
+            overflow: hidden;
+            opacity: 0; 
+            transform: translateY(20px); 
+        }
+
+        .game-card:active {
+            transform: scale(0.985) !important; 
+        }
+
+        .game-card.featured {
+            border-color: rgba(0,224,198,0.32);
+            box-shadow:
+                0 16px 34px rgba(0,0,0,0.24),
+                0 0 0 1px rgba(0,224,198,0.08) inset;
+        }
+
+        .game-icon {
+            width: 76px;
+            height: 76px;
+            border-radius: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 34px;
+            flex-shrink: 0;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.22);
+            overflow: hidden; 
+            position: relative; 
+        }
+
+        .game-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .game-topline {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+            flex-wrap: wrap;
+        }
+
+        .game-title {
+            font-size: 18px;
+            font-weight: 800;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge.hot { background: rgba(255,91,119,0.14); color: #ff8ca1; }
+        .badge.new { background: rgba(0,224,198,0.12); color: #7af5e8; }
+        .badge.soon { background: rgba(255,204,68,0.12); color: #ffd977; }
+
+        .game-desc {
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.45;
+            margin-bottom: 8px;
+        }
+
+        .game-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .meta-pill {
+            padding: 6px 9px;
+            border-radius: 999px;
+            font-size: 11px;
+            color: var(--text-soft);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .play-btn {
+            align-self: flex-end;
+            border: none;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+            color: #071019;
+            font-weight: 900;
+            padding: 11px 16px;
+            border-radius: 14px;
+            font-size: 12px;
+            letter-spacing: 0.4px;
+            cursor: pointer;
+            white-space: nowrap;
+            box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+        }
+
+        .play-btn.alt {
+            background: linear-gradient(135deg, #ff4ab4 0%, #8d5cff 100%);
+            color: #fff;
+        }
+
+        .play-btn.soon {
+            background: rgba(255,255,255,0.05);
+            color: var(--text-muted);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: none;
+        }
+
+        .bottom-nav {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1000;
+            max-width: 760px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-around;
+            padding: 13px 10px 24px;
+            background: rgba(13,17,26,0.94);
+            backdrop-filter: blur(16px);
+            border-top: 1px solid rgba(255,255,255,0.06);
+            box-shadow: 0 -12px 28px rgba(0,0,0,0.18);
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            min-width: 72px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 11px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: 0.15s ease;
+        }
+
+        .nav-item.active { color: var(--accent); }
+        .nav-icon { font-size: 23px; }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(4,6,10,0.84);
+            backdrop-filter: blur(10px);
+            z-index: 2000;
+            display: none;
+            justify-content: flex-end;
+        }
+
+        .modal-overlay.show { display: flex; }
+
+        .modal-content {
+            width: 100%;
+            max-width: 760px;
+            min-height: 72vh;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%),
+                linear-gradient(180deg, #121827 0%, #0e1421 100%);
+            border-top-left-radius: 28px;
+            border-top-right-radius: 28px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            padding: 22px 18px 30px;
+            animation: slideUp 0.24s ease-out;
+            position: relative;
+            box-shadow: 0 -18px 40px rgba(0,0,0,0.35);
+            overflow-y: auto;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); opacity: 0.7; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 14px;
+            right: 16px;
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            border: none;
+            background: rgba(255,255,255,0.05);
+            color: var(--text-soft);
+            font-size: 18px;
+            cursor: pointer;
+        }
+
+        .modal-title {
+            font-size: 26px;
+            font-weight: 900;
+            margin-bottom: 18px;
+            padding-right: 44px;
+        }
+
+        .panel {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 18px;
+            padding: 16px;
+            margin-bottom: 14px;
+        }
+
+        .panel-title {
+            font-size: 17px;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+
+        .panel-subtitle {
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .profile-head {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .profile-avatar {
+            width: 84px;
+            height: 84px;
+            border-radius: 24px;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.04) 100%),
+                linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #071019;
+            font-size: 34px;
+            font-weight: 900;
+            box-shadow: 0 14px 28px rgba(0,0,0,0.24);
+            flex-shrink: 0;
+        }
+
+        .profile-name { font-size: 24px; font-weight: 900; margin-bottom: 4px; }
+        .rank { color: var(--text-muted); font-size: 14px; }
+
+        .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .stat-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 14px 12px; text-align: center; }
+        .stat-value { font-size: 22px; font-weight: 900; margin-bottom: 4px; }
+        .stat-label { font-size: 12px; color: var(--text-muted); }
+
+        .input-group { margin-top: 12px; }
+        .label { display: block; font-size: 13px; font-weight: 700; color: var(--text-soft); margin-bottom: 8px; }
+        .input { width: 100%; height: 50px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: var(--text-main); padding: 0 14px; font-size: 15px; outline: none; }
+        .input::placeholder { color: var(--text-muted); }
+
+        .save-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+        .shop-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+
+        .shop-item {
+            border-radius: 18px;
+            padding: 16px;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
+                linear-gradient(180deg, #171d2d 0%, #101624 100%);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .shop-item-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .shop-name { font-size: 17px; font-weight: 800; }
+        .shop-price { padding: 8px 10px; border-radius: 999px; background: rgba(255,204,68,0.12); color: var(--gold); font-size: 12px; font-weight: 900; }
+        .shop-desc { font-size: 13px; color: var(--text-muted); line-height: 1.45; margin-bottom: 12px; }
+        .shop-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+        .mini-note { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.45; }
+        .status-msg { margin-top: 10px; font-size: 13px; font-weight: 700; }
+        .status-msg.ok { color: var(--success); }
+        .status-msg.err { color: var(--danger); }
+        .hidden { display: none !important; }
+
+        .icon-space  { background: linear-gradient(135deg, #16395b, #2f6db2); }
+        .icon-city   { background: linear-gradient(135deg, #6b2db4, #e26f7a); }
+        .icon-race   { background: linear-gradient(135deg, #c72f45, #ff7542); }
+        .icon-quiz   { background: linear-gradient(135deg, #19a188, #4ef08e); }
+        .icon-tetris { background: linear-gradient(135deg, #8f39ff, #4c5dff); }
+        .icon-clash  { background: linear-gradient(135deg, #ff39bb, #4b56ff); }
+        .icon-moba   { background: linear-gradient(135deg, #7e4c1f, #b58b45); }
+        .icon-pool   { background: linear-gradient(135deg, #118f77, #0b4f68); }
+        .icon-cards  { background: linear-gradient(135deg, #7839d4, #cc4bd8); }
+        .icon-build  { background: linear-gradient(135deg, #b0692f, #e8a548); }
+        .icon-find   { background: linear-gradient(135deg, #0f7ccc, #45b7ff); }
+        .icon-sudoku { background: linear-gradient(135deg, #30415f, #6078a4); }
+
+        @media (max-width: 520px) {
+            .hero-title { font-size: 22px; }
+            .game-card { align-items: flex-start; flex-wrap: wrap; }
+            .play-btn { width: 100%; }
+            .stats-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <div class="header-top">
+                <div class="user-info">
+                    <div class="avatar" id="userAvatar">A</div>
+                    <div class="user-meta">
+                        <div class="welcome">Твой игровой хаб</div>
+                        <div class="nickname" id="userName">Загрузка...</div>
+                    </div>
+                </div>
+
+                <div class="balance-wrap">
+                    <div class="balance-pill gold"><span id="bankBalance">0</span> 🪙</div>
+                    <div class="balance-pill crystal"><span id="bankCrystals">0</span> 💎</div>
+                </div>
+            </div>
+        </header>
+
+        <section class="hero">
+            <div class="hero-title">V-Hub</div>
+            <div class="hero-subtitle">
+                Один хаб для аркад, карточных игр, стратегий и будущих PvP-проектов. Играй, зарабатывай валюту, открывай награды и прокачивай профиль.
+            </div>
+            <div class="hero-actions">
+                <button class="btn btn-primary" onclick="openModal('modalBank', 'bank')">Открыть магазин</button>
+                <button class="btn btn-secondary" onclick="openModal('modalProfile', 'profile')">Профиль и настройки</button>
+            </div>
+        </section>
+
+        <section class="search-wrap">
+            <div class="search-box">
+                <span>🔎</span>
+                <input id="gameSearch" type="text" placeholder="Найти игру или жанр..." oninput="filterGames()" />
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <div class="section-title">Категории</div>
+                <div class="section-note">Быстрый фильтр</div>
+            </div>
+            <div class="category-row" id="categoryRow">
+                <button class="chip active" onclick="setCategory('all', this)">Все</button>
+                <button class="chip" onclick="setCategory('arcade', this)">Аркады</button>
+                <button class="chip" onclick="setCategory('cards', this)">Карточные</button>
+                <button class="chip" onclick="setCategory('board', this)">Настольные</button>
+                <button class="chip" onclick="setCategory('builders', this)">Строительство</button>
+                <button class="chip" onclick="setCategory('puzzle', this)">Головоломки</button>
+                <button class="chip" onclick="setCategory('pvp', this)">PvP / Арена</button>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-head">
+                <div class="section-title">Игры</div>
+                <div class="section-note">Подборка хаба</div>
+            </div>
+        </section>
+
+        <div class="games-grid" id="gamesGrid">
+
+            <div class="game-card" data-category="arcade" data-search="fly invaders космос шутер галактика">
+                <div class="game-icon icon-space">🚀</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Fly Invaders</div>
+                        <div class="badge hot">hot</div>
+                    </div>
+                    <div class="game-desc">Космический шутер. Защити галактику, уничтожай волны врагов и фарми монеты.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Аркада</div>
+                        <div class="meta-pill">Фарм валюты</div>
+                        <div class="meta-pill">Быстрые сессии</div>
+                    </div>
+                </div>
+                <button class="play-btn" onclick="event.stopPropagation(); goToGame('/game/fly_invaders.html')">ИГРАТЬ</button>
+            </div>
+
+            <div class="game-card" data-category="builders" data-search="city bloxx город строительство башня блоки">
+                <div class="game-icon icon-city">🏗️</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">City Bloxx</div>
+                    </div>
+                    <div class="game-desc">Построй самый высокий небоскрёб из блоков и улучшай рекорд.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Строительство</div>
+                        <div class="meta-pill">Казуал</div>
+                    </div>
+                </div>
+                <button class="play-btn" onclick="event.stopPropagation(); goToGame('/game/games/city_bloxx.html')">ИГРАТЬ</button>
+            </div>
+
+            <div class="game-card" data-category="arcade" data-search="tower defense башня защита гоблины стратегия">
+                <div class="game-icon icon-quiz">🏰</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Tower Defense</div>
+                    </div>
+                    <div class="game-desc">Защищай базу от волн врагов, ставь башни и выстраивай оборону.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">TD</div>
+                        <div class="meta-pill">Стратегия</div>
+                    </div>
+                </div>
+                <button class="play-btn" onclick="event.stopPropagation(); goToGame('/game/games/tower_defense.html')">ИГРАТЬ</button>
+            </div>
+
+            <div class="game-card" data-category="arcade" data-search="neon racing гонка трафик скорость">
+                <div class="game-icon icon-race">🏎️</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Neon Racing</div>
+                    </div>
+                    <div class="game-desc">Уворачивайся от трафика на бешеной скорости и бей рекорды.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Гонки</div>
+                        <div class="meta-pill">Рефлексы</div>
+                    </div>
+                </div>
+                <button class="play-btn" onclick="event.stopPropagation(); goToGame('/game/games/neon_racing.html')">ИГРАТЬ</button>
+            </div>
+
+            <div class="game-card" data-category="puzzle" data-search="tetris неон линии блоки логика">
+                <div class="game-icon icon-tetris">🧱</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Neon Tetris</div>
+                    </div>
+                    <div class="game-desc">Классика в неоновом стиле. Собирай линии и фарми монеты.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Puzzle</div>
+                        <div class="meta-pill">Скилл</div>
+                    </div>
+                </div>
+                <button class="play-btn" onclick="event.stopPropagation(); goToGame('/game/games/tetris.html')">ИГРАТЬ</button>
+            </div>
+
+            <div class="game-card" data-category="puzzle" data-search="quiz викторина интеллект вопросы ответы">
+                <div class="game-icon icon-quiz">🧠</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Что? Где? Когда?</div>
+                    </div>
+                    <div class="game-desc">Интеллектуальная викторина с вопросами на эрудицию и память.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Викторина</div>
+                        <div class="meta-pill">Ум</div>
+                    </div>
+                </div>
+                <button class="play-btn" onclick="event.stopPropagation(); goToGame('/game/games/quiz.html')">ИГРАТЬ</button>
+            </div>
+
+            <div class="game-card featured" data-category="pvp" data-search="neon clash кибер арена башни карты pvp">
+                <div class="game-icon icon-clash">⚔️</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Neon Clash</div>
+                        <div class="badge new">featured</div>
+                    </div>
+                    <div class="game-desc">Киберпанк-арена с картами, пушем линий и разрушением вражеской базы.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">PvP feel</div>
+                        <div class="meta-pill">Карты</div>
+                        <div class="meta-pill">Арена</div>
+                    </div>
+                </div>
+                <button class="play-btn alt" onclick="event.stopPropagation(); goToGame('/game/games/neon_clash.html')">ИГРАТЬ</button>
+            </div>
+
+            <div class="game-card" data-category="puzzle" data-search="судоку sudoku цифры логика">
+                <div class="game-icon icon-sudoku">🔢</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Судоку</div>
+                        <div class="badge new">new</div>
+                    </div>
+                    <div class="game-desc">Чистое и удобное судоку с уровнями сложности и сериями побед.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Логика</div>
+                        <div class="meta-pill">Ежедневки</div>
+                    </div>
+                </div>
+                <button class="play-btn" onclick="event.stopPropagation(); goToGame('/game/games/sudoku.html')">ИГРАТЬ</button>
+            </div>
+
+            <div class="game-card" data-category="cards" data-search="дурак карты отбиться козырь">
+                <div class="game-icon icon-cards">🃏</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Дурак</div>
+                        <div class="badge new">new</div>
+                    </div>
+                    <div class="game-desc">Любимая карточная классика с системой дропа исторических фактов.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Карточная</div>
+                        <div class="meta-pill">Классика</div>
+                    </div>
+                </div>
+                <button class="play-btn" onclick="event.stopPropagation(); goToGame('/game/games/durak.html')">ИГРАТЬ</button>
+            </div>
+
+            <div class="game-card" data-category="pvp" data-search="moba моба линия герои крипы способности warcraft dota">
+                <div class="game-icon icon-moba">🛡️</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Airo Hackey: Arena</div>
+                        <div class="badge soon">soon</div>
+                    </div>
+                    <div class="game-desc">Будущая арена в духе MOBA: герой, крипы, способности, файты и разрушение крепости врага.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">MOBA inspired</div>
+                        <div class="meta-pill">Файты</div>
+                        <div class="meta-pill">Глубокий дизайн</div>
+                    </div>
+                </div>
+                <button class="play-btn soon" onclick="event.stopPropagation(); showSoon('Airo Hackey: Arena')">СКОРО</button>
+            </div>
+
+            <div class="game-card" data-category="board" data-search="бильярд pool billiard шар луза">
+                <div class="game-icon icon-pool">🎱</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Бильярд</div>
+                        <div class="badge soon">soon</div>
+                    </div>
+                    <div class="game-desc">Классический стол, шары, физика ударов и соревновательный режим.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Настольная</div>
+                        <div class="meta-pill">Физика</div>
+                    </div>
+                </div>
+                <button class="play-btn soon" onclick="event.stopPropagation(); showSoon('Бильярд')">СКОРО</button>
+            </div>
+
+            <div class="game-card" data-category="cards" data-search="покер poker карты комбинации">
+                <div class="game-icon icon-cards">♠️</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Покер</div>
+                        <div class="badge soon">soon</div>
+                    </div>
+                    <div class="game-desc">Карточные партии, ставки и режим игры с ИИ или друзьями.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Карточная</div>
+                        <div class="meta-pill">PvP / PvE</div>
+                    </div>
+                </div>
+                <button class="play-btn soon" onclick="event.stopPropagation(); showSoon('Покер')">СКОРО</button>
+            </div>
+
+            <div class="game-card" data-category="builders" data-search="строительство домов house building постройка дома">
+                <div class="game-icon icon-build">🏠</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Строительство домов</div>
+                        <div class="badge new">new</div>
+                    </div>
+                    <div class="game-desc">Экономическая стратегия: закупай материалы, строй дома, улучшай участки и собирай аренду.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Build</div>
+                        <div class="meta-pill">Прогрессия</div>
+                    </div>
+                </div>
+                <button class="play-btn" onclick="event.stopPropagation(); goToGame('/game/games/build.html')">ИГРАТЬ</button>
+            </div>
+
+            <div class="game-card" data-category="puzzle" data-search="найди отличия поиск differences">
+                <div class="game-icon icon-find">🔍</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Найди отличия</div>
+                        <div class="badge soon">soon</div>
+                    </div>
+                    <div class="game-desc">Сравнивай сцены, находи отличия и проходи всё более сложные уровни.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Поиск</div>
+                        <div class="meta-pill">Внимание</div>
+                    </div>
+                </div>
+                <button class="play-btn soon" onclick="event.stopPropagation(); showSoon('Найди отличия')">СКОРО</button>
+            </div>
+
+            <div class="game-card" data-category="puzzle" data-search="поиск предметов hidden objects вещи объекты">
+                <div class="game-icon icon-find">🗝️</div>
+                <div class="game-info">
+                    <div class="game-topline">
+                        <div class="game-title">Поиск предметов</div>
+                        <div class="badge soon">soon</div>
+                    </div>
+                    <div class="game-desc">Ищи скрытые объекты на детализированных локациях и открывай новые сцены.</div>
+                    <div class="game-meta">
+                        <div class="meta-pill">Hidden Objects</div>
+                        <div class="meta-pill">Казуал</div>
+                    </div>
+                </div>
+                <button class="play-btn soon" onclick="event.stopPropagation(); showSoon('Поиск предметов')">СКОРО</button>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalBank">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal('modalBank')">✕</button>
+            <div class="modal-title" style="color: var(--gold);">Банк и магазин</div>
+
+            <div class="panel">
+                <div class="panel-title">Твой баланс</div>
+                <div class="panel-subtitle">Общая валюта хаба и редкая валюта для будущих наград и лутбоксов.</div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+                    <div class="balance-pill gold"><span id="modalCoins">0</span> 🪙</div>
+                    <div class="balance-pill crystal"><span id="modalCrystals">0</span> 💎</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title">Пополнение</div>
+                <div class="panel-subtitle">Ниже заготовки паков. Кнопки можно подключить к Telegram Stars или твоему backend-роуту оплаты.</div>
+            </div>
+
+            <div class="shop-grid">
+                <div class="shop-item">
+                    <div class="shop-item-top">
+                        <div class="shop-name">Стартовый пак</div>
+                        <div class="shop-price">⭐ 50</div>
+                    </div>
+                    <div class="shop-desc">500 монет + 10 кристаллов. Хороший старт для первой покупки.</div>
+                    <div class="shop-actions">
+                        <button class="btn btn-primary" onclick="buyPack('starter')">Купить</button>
+                    </div>
+                </div>
+
+                <div class="shop-item">
+                    <div class="shop-item-top">
+                        <div class="shop-name">Боевой пак</div>
+                        <div class="shop-price">⭐ 120</div>
+                    </div>
+                    <div class="shop-desc">1500 монет + 40 кристаллов. Подходит для активного игрока.</div>
+                    <div class="shop-actions">
+                        <button class="btn btn-primary" onclick="buyPack('battle')">Купить</button>
+                    </div>
+                </div>
+
+                <div class="shop-item">
+                    <div class="shop-item-top">
+                        <div class="shop-name">Премиум пак</div>
+                        <div class="shop-price">⭐ 250</div>
+                    </div>
+                    <div class="shop-desc">4000 монет + 120 кристаллов + будущий эксклюзивный бонус.</div>
+                    <div class="shop-actions">
+                        <button class="btn btn-primary" onclick="buyPack('premium')">Купить</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mini-note">
+                Для реальной покупки тебе дальше нужно привязать кнопку к серверному роуту оплаты или Stars invoice.
+            </div>
+            <div id="shopStatus" class="status-msg hidden"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalProfile">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal('modalProfile')">✕</button>
+            <div class="modal-title">Профиль</div>
+
+            <div class="profile-head">
+                <div class="profile-avatar" id="modalAvatar">A</div>
+                <div>
+                    <div class="profile-name" id="modalNickname">Загрузка...</div>
+                    <div class="rank">Ранг: Новичок</div>
+                </div>
+            </div>
+
+            <div class="stats-row">
+                <div class="stat-card">
+                    <div class="stat-value" style="color: var(--accent);" id="statGames">0</div>
+                    <div class="stat-label">Игр</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: var(--gold);" id="profileCoins">0</div>
+                    <div class="stat-label">Монет</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: var(--danger);" id="statWins">0</div>
+                    <div class="stat-label">Побед</div>
+                </div>
+            </div>
+
+            <div class="panel" style="margin-top:14px;">
+                <div class="panel-title">Сменить имя</div>
+                <div class="panel-subtitle">Telegram-имя можно использовать как базу, но внутри хаба ты можешь поставить свой игровой ник.</div>
+
+                <div class="input-group">
+                    <label class="label" for="nicknameInput">Игровой ник</label>
+                    <input class="input" id="nicknameInput" type="text" maxlength="20" placeholder="Например: ValFlow" />
+                </div>
+
+                <div class="save-row">
+                    <button class="btn btn-primary" onclick="saveNickname()">Сохранить ник</button>
+                    <button class="btn btn-secondary" onclick="resetNickname()">Сбросить</button>
+                </div>
+
+                <div id="profileStatus" class="status-msg hidden"></div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title">Настройки</div>
+                <div class="panel-subtitle">Следующим этапом сюда можно добавить выбор аватарки, музыку, звуки, язык, уведомления и тему.</div>
+            </div>
+        </div>
+    </div>
+
+    <nav class="bottom-nav">
+        <div class="nav-item active" id="nav-games" onclick="switchNav('games')">
+            <span class="nav-icon">🎮</span>
+            <span>Игры</span>
+        </div>
+        <div class="nav-item" id="nav-bank" onclick="openModal('modalBank', 'bank')">
+            <span class="nav-icon">🛒</span>
+            <span>Магазин</span>
+        </div>
+        <div class="nav-item" id="nav-profile" onclick="openModal('modalProfile', 'profile')">
+            <span class="nav-icon">👤</span>
+            <span>Профиль</span>
+        </div>
+    </nav>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        tg.setHeaderColor('#0a0d16');
+
+        const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Test", username: "Guest" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+
+        let baseNickname = user.username || user.first_name || "Пилот";
+        let nickname = baseNickname;
+        let userCoins = 0;
+        let userCrystals = 0;
+        let currentCategory = 'all';
+
+        function setText(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        }
+
+        function getInitial(name) {
+            return (name && name.trim().length ? name.trim().charAt(0) : 'A').toUpperCase();
+        }
+
+        function applyUserUI(finalName) {
+            setText('userName', finalName);
+            setText('modalNickname', finalName);
+            setText('userAvatar', getInitial(finalName));
+            setText('modalAvatar', getInitial(finalName));
+
+            setText('bankBalance', userCoins);
+            setText('bankCrystals', userCrystals);
+            setText('modalCoins', userCoins);
+            setText('modalCrystals', userCrystals);
+            setText('profileCoins', userCoins);
+
+            const input = document.getElementById('nicknameInput');
+            if (input && document.activeElement !== input) {
+                input.value = finalName;
+            }
+        }
+
+        async function fetchGlobalData() {
+            // Исправление бага с никнеймом (Локальное хранилище как страховка)
+            let localNick = localStorage.getItem('hub_nickname');
+            try {
+                const res = await fetch(`${BACKEND_URL}/get_user`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        telegram_id: user.id,
+                        username: baseNickname
+                    })
+                });
+
+                const data = await res.json();
+
+                nickname = (data.nickname && data.nickname.trim() !== "") ? data.nickname : (localNick || baseNickname);
+                userCoins = Number(data.coins) || Number(localStorage.getItem('hub_coins')) || 0;
+                userCrystals = Number(data.crystals) || Number(localStorage.getItem('hub_crystals')) || 0;
+
+                setText('statGames', Number(data.games_played) || 0);
+                setText('statWins', Number(data.wins) || 0);
+
+                applyUserUI(nickname);
+            } catch (e) {
+                console.error('Ошибка связи с сервером:', e);
+                nickname = localNick || baseNickname;
+                userCoins = Number(localStorage.getItem('hub_coins')) || 0;
+                userCrystals = Number(localStorage.getItem('hub_crystals')) || 0;
+                applyUserUI(nickname);
+            }
+        }
+
+        function animateCards() {
+            gsap.fromTo(".game-card", 
+                { y: 40, opacity: 0 }, 
+                { y: 0, opacity: 1, duration: 0.5, stagger: 0.1, ease: "power2.out" }
+            );
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            animateCards();
+        });
+
+        function switchNav(activeId) {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const active = document.getElementById(`nav-${activeId}`);
+            if (active) active.classList.add('active');
+        }
+
+        function openModal(modalId, navId) {
+            switchNav(navId);
+            const modal = document.getElementById(modalId);
+            if (modal) modal.classList.add('show');
+        }
+
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) modal.classList.remove('show');
+            switchNav('games');
+        }
+
+        function goToGame(url) {
+            window.location.href = url;
+        }
+
+        function showSoon(name) {
+            tg.showAlert ? tg.showAlert(`${name} скоро появится в хабе.`) : alert(`${name} скоро появится в хабе.`);
+        }
+
+        function setStatus(id, text, type = 'ok') {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.remove('hidden', 'ok', 'err');
+            el.classList.add(type);
+            el.textContent = text;
+        }
+
+        function clearStatus(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.add('hidden');
+            el.textContent = '';
+            el.classList.remove('ok', 'err');
+        }
+
+        async function saveNickname() {
+            const input = document.getElementById('nicknameInput');
+            if (!input) return;
+
+            let newName = input.value.trim();
+            clearStatus('profileStatus');
+
+            if (newName.length < 2) {
+                setStatus('profileStatus', 'Ник должен быть минимум из 2 символов.', 'err');
+                return;
+            }
+
+            if (newName.length > 20) {
+                setStatus('profileStatus', 'Ник слишком длинный.', 'err');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/update_profile`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        telegram_id: user.id,
+                        nickname: newName
+                    })
+                });
+
+                if (!res.ok) {
+                    throw new Error('profile update failed');
+                }
+
+                nickname = newName;
+                localStorage.setItem('hub_nickname', nickname);
+                applyUserUI(nickname);
+                setStatus('profileStatus', 'Ник успешно сохранён.', 'ok');
+            } catch (e) {
+                nickname = newName;
+                localStorage.setItem('hub_nickname', nickname);
+                applyUserUI(nickname);
+                setStatus('profileStatus', 'Ник сохранён локально. Серверный роут ещё нужно подключить.', 'ok');
+            }
+        }
+
+        function resetNickname() {
+            nickname = baseNickname;
+            localStorage.setItem('hub_nickname', nickname);
+            applyUserUI(nickname);
+            setStatus('profileStatus', 'Ник сброшен к Telegram-имени.', 'ok');
+        }
+
+        function buyPack(packId) {
+            clearStatus('shopStatus');
+
+            const packMap = {
+                starter: 'Стартовый пак',
+                battle: 'Боевой пак',
+                premium: 'Премиум пак'
+            };
+
+            setStatus('shopStatus', `${packMap[packId] || 'Пак'} пока как заготовка. Дальше подключаем Stars/оплату.`, 'ok');
+        }
+
+        function setCategory(category, btn) {
+            currentCategory = category;
+            document.querySelectorAll('.chip').forEach(chip => chip.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            filterGames();
+        }
+
+        function filterGames() {
+            const query = (document.getElementById('gameSearch')?.value || '').toLowerCase().trim();
+            const cards = document.querySelectorAll('.game-card');
+
+            cards.forEach(card => {
+                const cardCategory = card.dataset.category || '';
+                const searchText = (card.dataset.search || '').toLowerCase();
+
+                const categoryOk = currentCategory === 'all' || cardCategory === currentCategory;
+                const searchOk = !query || searchText.includes(query);
+
+                card.style.display = (categoryOk && searchOk) ? 'flex' : 'none';
+            });
+        }
+
+        document.querySelectorAll('.modal-overlay').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.classList.remove('show');
+                    switchNav('games');
+                }
+            });
+        });
+
+        fetchGlobalData();
+    </script>
+</body>
+</html>

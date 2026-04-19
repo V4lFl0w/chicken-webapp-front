@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Racing</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background-color: #05050a; color: white; font-family: 'Montserrat', sans-serif; overflow: hidden; touch-action: none; user-select: none; }
+        
+        /* ВЕРХНЯЯ ПАНЕЛЬ */
+        #topUI {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 15px 20px; background: rgba(5, 5, 10, 0.8); backdrop-filter: blur(10px);
+            border-bottom: 2px solid #00ffcc; box-shadow: 0 4px 20px rgba(0, 255, 204, 0.2);
+            position: absolute; top: 0; left: 0; width: 100%; box-sizing: border-box; z-index: 10;
+        }
+        
+        .btn-back { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.3); padding: 8px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        .stats { text-align: right; }
+        .score { font-size: 20px; font-weight: 900; color: #00ffcc; text-shadow: 0 0 10px rgba(0,255,204,0.5); }
+        .coins { font-size: 15px; color: #ffcc00; font-weight: bold; text-shadow: 0 0 5px rgba(255,204,0,0.5); }
+
+        /* ИГРОВОЙ КАНВАС */
+        canvas { display: block; width: 100vw; height: 100vh; background: radial-gradient(circle at center, #0a0a12 0%, #030305 100%); }
+
+        /* УПРАВЛЕНИЕ (Мобильное) */
+        #controls {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 40vh;
+            display: flex; z-index: 5;
+        }
+        .touch-zone {
+            flex: 1; height: 100%;
+            display: flex; align-items: flex-end; justify-content: center;
+            padding-bottom: 40px; font-size: 40px; color: rgba(255,255,255,0.05);
+            transition: 0.1s;
+        }
+        .touch-zone:active { background: linear-gradient(0deg, rgba(0,255,204,0.15) 0%, transparent 100%); color: rgba(0,255,204,0.4); }
+        .touch-zone.right:active { background: linear-gradient(0deg, rgba(255,51,102,0.15) 0%, transparent 100%); color: rgba(255,51,102,0.4); }
+
+        /* ОВЕРЛЕЙ КОНЦА ИГРЫ */
+        #gameOverOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 5, 10, 0.95); z-index: 100;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+        }
+        h1 { font-size: 50px; color: #ff3366; margin-bottom: 10px; text-transform: uppercase; text-shadow: 0 0 20px #ff3366; font-style: italic; }
+        .result-text { font-size: 24px; margin-bottom: 40px; color: #fff; text-align: center; font-weight: bold; line-height: 1.5; }
+        .restart-btn { background: linear-gradient(45deg, #ff3366, #ff00cc); color: #fff; font-size: 22px; font-weight: 900; padding: 18px 50px; border: none; border-radius: 15px; cursor: pointer; box-shadow: 0 8px 0 #990033, 0 0 30px rgba(255,51,102,0.5); text-transform: uppercase; }
+        .restart-btn:active { transform: translateY(8px); box-shadow: 0 0 0 #990033, 0 0 15px rgba(255,51,102,0.5); }
+    </style>
+</head>
+<body>
+
+    <div id="topUI">
+        <button class="btn-back" onclick="window.location.href='../index.html'">◀ ХАБ</button>
+        <div class="stats">
+            <div class="score">РАССТОЯНИЕ: <span id="scoreVal">0</span>m</div>
+            <div class="coins">+<span id="coinsVal">0</span> 🪙</div>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="controls">
+        <div class="touch-zone" id="btn-left">◀</div>
+        <div class="touch-zone right" id="btn-right">▶</div>
+    </div>
+
+    <div id="gameOverOverlay">
+        <h1>СИСТЕМА СБИТА</h1>
+        <div class="result-text">Проехали: <span id="finalScore" style="color:#00ffcc">0</span>m<br>Собрано: <span id="finalCoins" style="color:#ffcc00">0</span> 🪙</div>
+        <button class="restart-btn" onclick="resetGame()">ГАЗ В ПОЛ!</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand(); tg.disableVerticalSwipes && tg.disableVerticalSwipes();
+        tg.setHeaderColor('#05050a');
+
+        const user = tg.initDataUnsafe?.user || { id: 12345, first_name: "Racer", username: "Speed" };
+        const BACKEND_URL = "https://coral-app-jxzy5.ondigitalocean.app/game-api";
+        let nickname = user.username || user.first_name || "Гонщик";
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // ИГРОВЫЕ ПЕРЕМЕННЫЕ
+        let animationId = null; // ВАЖНО: глобальный трекер анимации
+        let score = 0;
+        let earnedCoins = 0;
+        let baseSpeed = 6;
+        let currentSpeed = baseSpeed;
+        let gameOver = false;
+        let frameCount = 0;
+
+        // Игрок
+        const player = {
+            width: 36, height: 60, x: canvas.width / 2 - 18, y: canvas.height - 140,
+            vx: 0, speed: 8, color: '#00ffcc'
+        };
+
+        let traffic = [];
+        let roadCoins = [];
+        let particles = [];
+        let trails = [];
+        let speedLines = [];
+        let roadLines = [0, canvas.height * 0.33, canvas.height * 0.66, canvas.height];
+
+        // УПРАВЛЕНИЕ
+        let leftPressed = false;
+        let rightPressed = false;
+
+        document.getElementById('btn-left').addEventListener('touchstart', (e) => { e.preventDefault(); leftPressed = true; });
+        document.getElementById('btn-left').addEventListener('touchend', (e) => { e.preventDefault(); leftPressed = false; });
+        document.getElementById('btn-right').addEventListener('touchstart', (e) => { e.preventDefault(); rightPressed = true; });
+        document.getElementById('btn-right').addEventListener('touchend', (e) => { e.preventDefault(); rightPressed = false; });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') leftPressed = true;
+            if (e.key === 'ArrowRight' || e.key === 'd') rightPressed = true;
+        });
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a') leftPressed = false;
+            if (e.key === 'ArrowRight' || e.key === 'd') rightPressed = false;
+        });
+
+        // ФИЗИКА И СПАВН
+        function spawnTraffic() {
+            const w = 36; const h = 60;
+            const minX = 30; const maxX = canvas.width - 30 - w;
+            const x = Math.random() * (maxX - minX) + minX;
+            const speedMod = Math.random() * 3 + 2; 
+            traffic.push({ x: x, y: -h, width: w, height: h, speed: speedMod, color: '#ff3366' });
+        }
+
+        function spawnCoin() {
+            const radius = 12;
+            const minX = 40; const maxX = canvas.width - 40 - radius;
+            const x = Math.random() * (maxX - minX) + minX;
+            roadCoins.push({ x: x, y: -30, radius: radius, color: '#ffcc00', float: Math.random()*Math.PI*2 });
+        }
+
+        function spawnSpeedLine() {
+            speedLines.push({
+                x: Math.random() > 0.5 ? Math.random()*20 : canvas.width - Math.random()*20, // По краям
+                y: -50,
+                length: Math.random() * 100 + 50,
+                speed: currentSpeed * 2.5 // Летят очень быстро
+            });
+        }
+
+        function createExplosion(x, y, color) {
+            for(let i = 0; i < 40; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 20,
+                    life: 1.0, decay: 0.015 + Math.random() * 0.03,
+                    color: color, size: Math.random() * 6 + 2
+                });
+            }
+        }
+
+        function update() {
+            if (gameOver) return;
+            frameCount++;
+
+            // Плавное ускорение каждый кадр
+            currentSpeed += 0.003; 
+
+            score += Math.floor(currentSpeed / 4);
+            if (frameCount % 5 === 0) document.getElementById('scoreVal').innerText = score;
+
+            // Дорога
+            for (let i = 0; i < roadLines.length; i++) {
+                roadLines[i] += currentSpeed;
+                if (roadLines[i] >= canvas.height) roadLines[i] = -100;
+            }
+
+            // Движение игрока
+            if (leftPressed) player.vx = -player.speed;
+            else if (rightPressed) player.vx = player.speed;
+            else player.vx *= 0.8;
+
+            player.x += player.vx;
+            if (player.x < 20) player.x = 20;
+            if (player.x + player.width > canvas.width - 20) player.x = canvas.width - 20 - player.width;
+
+            // Выхлоп игрока (Трейл)
+            trails.push({ x: player.x + player.width/2, y: player.y + player.height, life: 1, color: player.color });
+
+            // Спавн
+            let spawnRate = Math.max(20, 70 - Math.floor(currentSpeed * 2)); 
+            if (frameCount % spawnRate === 0) spawnTraffic();
+            if (frameCount % 80 === 0 && Math.random() > 0.3) spawnCoin();
+            if (frameCount % 5 === 0) spawnSpeedLine();
+
+            // Трафик
+            for (let i = traffic.length - 1; i >= 0; i--) {
+                let t = traffic[i];
+                t.y += (currentSpeed - t.speed); 
+                trails.push({ x: t.x + t.width/2, y: t.y, life: 1, color: t.color, isEnemy: true }); // Выхлоп врага
+
+                if (t.y > canvas.height) { traffic.splice(i, 1); continue; }
+
+                // Жесткая коллизия
+                if (player.x < t.x + t.width - 5 && player.x + player.width > t.x + 5 &&
+                    player.y < t.y + t.height - 5 && player.y + player.height > t.y + 5) {
+                    createExplosion(player.x + player.width/2, player.y + player.height/2, player.color);
+                    createExplosion(t.x + t.width/2, t.y + t.height/2, t.color);
+                    endGame();
+                }
+            }
+
+            // Монеты
+            for (let i = roadCoins.length - 1; i >= 0; i--) {
+                let c = roadCoins[i];
+                c.y += currentSpeed;
+                c.float += 0.1; // Анимация левитации
+
+                if (c.y > canvas.height) { roadCoins.splice(i, 1); continue; }
+
+                let distX = (player.x + player.width/2) - c.x;
+                let distY = (player.y + player.height/2) - c.y;
+                if (Math.hypot(distX, distY) < player.width/2 + c.radius + 10) {
+                    earnedCoins++;
+                    document.getElementById('coinsVal').innerText = earnedCoins;
+                    for(let p=0; p<8; p++) particles.push({ x: c.x, y: c.y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 1, decay: 0.1, color: '#fff', size: 4 });
+                    roadCoins.splice(i, 1);
+                }
+            }
+
+            // Обновление эффектов
+            speedLines.forEach(s => s.y += s.speed);
+            speedLines = speedLines.filter(s => s.y < canvas.height);
+            
+            trails.forEach(t => { t.y += (t.isEnemy ? currentSpeed - 2 : currentSpeed); t.life -= 0.05; t.x += (Math.random()-0.5)*2; });
+            trails = trails.filter(t => t.life > 0);
+
+            particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life -= p.decay; });
+            particles = particles.filter(p => p.life > 0);
+        }
+
+        // ОТРИСОВКА КИБЕР-БОЛИДА
+        function drawCar(x, y, w, h, color, isEnemy = false) {
+            ctx.save();
+            ctx.translate(x + w/2, y + h/2);
+            if (isEnemy) ctx.rotate(Math.PI); // Враги смотрят вниз
+
+            ctx.fillStyle = '#111';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 15; ctx.shadowColor = color;
+
+            // Форма болида
+            ctx.beginPath();
+            ctx.moveTo(0, -h/2); // Нос
+            ctx.lineTo(w/2, -h/4); // Правый угол
+            ctx.lineTo(w/2.5, h/2); // Правый зад
+            ctx.lineTo(-w/2.5, h/2); // Левый зад
+            ctx.lineTo(-w/2, -h/4); // Левый угол
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+
+            // Кабина (Стекло)
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            ctx.moveTo(0, -h/6);
+            ctx.lineTo(w/4, h/6);
+            ctx.lineTo(-w/4, h/6);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function draw() {
+            ctx.fillStyle = '#05050a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Разметка
+            ctx.fillStyle = 'rgba(0, 255, 204, 0.1)';
+            const mid = canvas.width / 2;
+            for (let i = 0; i < roadLines.length; i++) {
+                ctx.fillRect(mid - 2, roadLines[i], 4, 80);
+            }
+            // Обочины
+            ctx.fillStyle = 'rgba(255, 51, 102, 0.3)';
+            ctx.fillRect(10, 0, 4, canvas.height);
+            ctx.fillRect(canvas.width - 14, 0, 4, canvas.height);
+
+            // Speedlines
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.lineWidth = 1;
+            speedLines.forEach(s => {
+                ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, s.y - s.length); ctx.stroke();
+            });
+
+            // Трейлы (Выхлоп)
+            trails.forEach(t => {
+                ctx.fillStyle = t.color; ctx.globalAlpha = t.life * 0.5;
+                ctx.beginPath(); ctx.arc(t.x, t.y, 6 * t.life, 0, Math.PI*2); ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Монеты
+            roadCoins.forEach(c => {
+                let hoverY = Math.sin(c.float) * 5;
+                ctx.beginPath(); ctx.arc(c.x, c.y + hoverY, c.radius, 0, Math.PI * 2);
+                ctx.fillStyle = c.color; ctx.shadowBlur = 20; ctx.shadowColor = c.color;
+                ctx.fill(); ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff'; ctx.font = '900 14px Montserrat'; ctx.textAlign='center';
+                ctx.fillText('$', c.x, c.y + hoverY + 5);
+            });
+
+            // Трафик
+            traffic.forEach(t => drawCar(t.x, t.y, t.width, t.height, t.color, true));
+
+            // Игрок
+            if (!gameOver) drawCar(player.x, player.y, player.width, player.height, player.color, false);
+
+            // Частицы
+            particles.forEach(p => {
+                ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life);
+                ctx.shadowBlur = 10; ctx.shadowColor = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+            });
+            ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
+        }
+
+        // ЖЕСТКИЙ ИГРОВОЙ ЦИКЛ (ЗАЩИТА ОТ БАГА СКОРОСТИ)
+        function loop() {
+            cancelAnimationFrame(animationId); // Убиваем прошлый кадр наверняка
+            
+            update();
+            draw();
+            
+            if (!gameOver || particles.length > 0) {
+                animationId = requestAnimationFrame(loop);
+            }
+        }
+
+        async function endGame() {
+            gameOver = true;
+            document.getElementById('gameOverOverlay').style.display = 'flex';
+            document.getElementById('finalScore').innerText = score;
+            document.getElementById('finalCoins').innerText = earnedCoins;
+
+            try {
+                await fetch(`${BACKEND_URL}/save_score`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: user.id, username: nickname, score: score, coins: earnedCoins, game: 'racing' })
+                });
+            } catch(e) {}
+        }
+
+        window.resetGame = function() {
+            cancelAnimationFrame(animationId); // СБРОС ВСЕХ АНИМАЦИЙ!
+            
+            score = 0; earnedCoins = 0; currentSpeed = baseSpeed; frameCount = 0;
+            document.getElementById('scoreVal').innerText = score;
+            document.getElementById('coinsVal').innerText = earnedCoins;
+            document.getElementById('gameOverOverlay').style.display = 'none';
+            
+            traffic = []; roadCoins = []; particles = []; trails = []; speedLines = [];
+            player.x = canvas.width / 2 - 18; player.vx = 0;
+            
+            gameOver = false;
+            loop(); // Перезапуск единого цикла
+        }
+
+        // Старт
+        player.y = canvas.height - 160; 
+        loop();
+
+    </script>
+</body>
+</html>
