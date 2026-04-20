@@ -963,6 +963,16 @@
             document.getElementById('endTitle').innerText = title;
             document.getElementById('endDesc').innerText = desc;
             document.getElementById('endOverlay').style.display = 'flex';
+            if (title.includes('ПОБЕДА')) {
+                const tgUser = tg.initDataUnsafe?.user;
+                if (tgUser?.id) {
+                    fetch(`${BACKEND_URL}/update_stats`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ telegram_id: tgUser.id, stat_type: 'win' })
+                    }).catch(() => {});
+                }
+            }
         }
 
         function dropFact() {
