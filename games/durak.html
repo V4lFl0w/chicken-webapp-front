@@ -141,6 +141,15 @@
         #alertToast.show { top: 80px; }
         #alertToast h3 { margin: 0; font-size: 16px; color: #fff; text-transform: uppercase; text-align: center;}
 
+        /* SPRITE CARD FACE */
+        .card-sprite {
+            background-color: #fff;
+            background-repeat: no-repeat;
+            /* background-image and background-position set inline per card */
+        }
+        /* The trump card uses same sprite but is rotated, needs visible content */
+        #trumpCardUI.card-sprite { color: transparent; }
+
         /* BALANCE BAR */
         #balance-bar { display: flex; gap: 8px; align-items: center; }
         .balance-chip {
@@ -287,6 +296,25 @@
         const tg = window.Telegram.WebApp; tg.expand(); if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
         tg.setHeaderColor('#0b0e14');
 
+        // --- BACKEND INTEGRATION ---
+        // Set this to your DigitalOcean backend URL:
+        const BACKEND_URL = 'https://your-backend.ondigitalocean.app';
+
+        (async function loadUser() {
+            try {
+                const tgUser = tg.initDataUnsafe?.user;
+                if (!tgUser?.id) return;
+                const res = await fetch(`${BACKEND_URL}/get_user`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: tgUser.id, username: tgUser.username || tgUser.first_name || 'Player' })
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                setBalance(data.chicken_coins ?? data.coins ?? 0, data.golden_feathers ?? 0);
+            } catch(e) {}
+        })();
+
         const HISTORICAL_FACTS = [
             "В 1912 году длина пути Титаника составила всего 4 дня до столкновения.",
             "Первая в мире веб-камера была создана в Кембридже, чтобы смотреть за кофеваркой.",
@@ -353,6 +381,40 @@
             toast.style.background = color;
             toast.classList.add('show');
             setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        // --- CARD SPRITE (Atlasnye SVG, 13 cols × 4 rows) ---
+        // Rows top→bottom: ♠ ♥ ♦ ♣  |  Cols left→right: A 2 3 4 5 6 7 8 9 10 J Q K
+        const SPRITE_URL = 'https://upload.wikimedia.org/wikipedia/commons/5/55/Atlasnye_playing_cards_deck.svg';
+        const SUIT_ROW  = { '♠': 0, '♥': 1, '♦': 2, '♣': 3 };
+        const RANK_COL  = { 'A': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8, '10': 9, 'J': 10, 'Q': 11, 'K': 12 };
+
+        function cardSpriteStyle(rank, suit) {
+            const xPct = (RANK_COL[rank] / 12) * 100;
+            const yPct = (SUIT_ROW[suit]  /  3) * 100;
+            return { img: SPRITE_URL, size: '1300% 400%', pos: `${xPct}% ${yPct}%` };
+        }
+
+        // --- SOUND ---
+        let _audioCtx = null;
+        function playCardSlap() {
+            try {
+                if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const ctx = _audioCtx;
+                const len = Math.floor(ctx.sampleRate * 0.07);
+                const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 10) * 0.55;
+                }
+                const src = ctx.createBufferSource();
+                src.buffer = buf;
+                const gain = ctx.createGain();
+                gain.gain.value = 0.8;
+                src.connect(gain);
+                gain.connect(ctx.destination);
+                src.start();
+            } catch(e) {}
         }
 
         // --- GAME STATE ---
@@ -425,14 +487,26 @@
         function renderCard(card, isBack = false) {
             const div = document.createElement('div');
             div.id = `card-${card.id}`;
-            div.style.willChange = 'transform'; // GPU layer for smooth drag & animation
+            div.style.willChange = 'transform';
             if (isBack) {
                 div.className = `card card-back ${currentShirt}`;
             } else {
-                div.className = `card ${card.color}`;
-                div.innerHTML = `<div>${card.rank}${card.suit}</div><div class="card-center">${card.suit}</div><div style="align-self: flex-end; transform: rotate(180deg);">${card.rank}${card.suit}</div>`;
+                div.className = 'card card-sprite';
+                const sp = cardSpriteStyle(card.rank, card.suit);
+                div.style.backgroundImage    = `url('${sp.img}')`;
+                div.style.backgroundSize     = sp.size;
+                div.style.backgroundPosition = sp.pos;
             }
             return div;
+        }
+
+        // Applies sprite to a static trump card element (persistent DOM node)
+        function applySpriteTo(el, rank, suit) {
+            const sp = cardSpriteStyle(rank, suit);
+            el.className = 'card trump-card card-sprite';
+            el.style.backgroundImage    = `url('${sp.img}')`;
+            el.style.backgroundSize     = sp.size;
+            el.style.backgroundPosition = sp.pos;
         }
 
         // --- INCREMENTAL HAND RENDERING ---
@@ -633,9 +707,7 @@
             });
 
             if (deck.length > 0) {
-                const trumpEl = document.getElementById('trumpCardUI');
-                trumpEl.className = `card trump-card ${trumpCard.color}`;
-                trumpEl.innerHTML = `<div>${trumpCard.rank}${trumpCard.suit}</div><div class="card-center">${trumpCard.suit}</div><div style="align-self:flex-end; transform:rotate(180deg);">${trumpCard.rank}${trumpCard.suit}</div>`;
+                applySpriteTo(document.getElementById('trumpCardUI'), trumpCard.rank, trumpCard.suit);
                 document.getElementById('deckCountUI').innerText = deck.length;
                 document.getElementById('deckStackUI').className = `card card-back deck-stack ${currentShirt}`;
                 document.getElementById('deckArea').style.display = 'block';
@@ -676,7 +748,7 @@
                 isPlayerDefending = false; isPlayerTurn = false; cardsAddedThisBout++;
                 renderTable(); updateSelectionVisuals(); updateUI();
                 const newCardEl = document.getElementById('tableArea').lastChild.querySelector('.bout-attack');
-                gsap.fromTo(newCardEl, {y: 200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3});
+                gsap.fromTo(newCardEl, {y: 200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3, onComplete: playCardSlap});
                 showAlert("ПЕРЕВОД!", "#00f3ff");
                 setTimeout(() => { isAnimating = false; botDefend(); }, 600);
             } else if (isPlayerTurn && !isPlayerDefending) {
@@ -684,7 +756,7 @@
                 cardsAddedThisBout++;
                 renderTable(); updateSelectionVisuals(); updateUI();
                 const newCardEl = document.getElementById('tableArea').lastChild.querySelector('.bout-attack');
-                gsap.fromTo(newCardEl, {y: 200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3});
+                gsap.fromTo(newCardEl, {y: 200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3, onComplete: playCardSlap});
                 if (!botNeedsToTake) setTimeout(() => { isAnimating = false; botDefend(); }, 600);
                 else isAnimating = false;
             } else if (isPlayerDefending) {
@@ -696,7 +768,7 @@
                 renderTable(); updateSelectionVisuals(); updateUI();
                 const pairEls = document.getElementById('tableArea').querySelectorAll('.bout-pair');
                 const newCardEl = pairEls[targetIdx]?.querySelector('.bout-defend');
-                if (newCardEl) gsap.fromTo(newCardEl, {y: 200, opacity: 0, x: 15}, {y: 0, opacity: 1, x: 15, duration: 0.3});
+                if (newCardEl) gsap.fromTo(newCardEl, {y: 200, opacity: 0, x: 15}, {y: 0, opacity: 1, x: 15, duration: 0.3, onComplete: playCardSlap});
                 // Fix: bot must NOT be called while any pair is still undefended.
                 // Release isAnimating and let player continue; call botAttack only when all covered.
                 const allDefended = table.every(p => p.defend !== null);
@@ -801,7 +873,7 @@
                 isAnimating = true;
                 renderTable(); updateSelectionVisuals(); updateUI();
                 const newCardEl = document.getElementById('tableArea').lastChild.querySelector('.bout-attack');
-                gsap.fromTo(newCardEl, {y: -200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3});
+                gsap.fromTo(newCardEl, {y: -200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3, onComplete: playCardSlap});
                 // Reset isAnimating before each recursive call so lock doesn't accumulate
                 if (playerNeedsToTake) setTimeout(() => { isAnimating = false; botAttack(); }, 600);
                 else isAnimating = false;
@@ -823,7 +895,7 @@
                     isAnimating = true;
                     renderTable(); updateSelectionVisuals(); updateUI();
                     const newCardEl = document.getElementById('tableArea').lastChild.querySelector('.bout-attack');
-                    gsap.fromTo(newCardEl, {y: -200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3});
+                    gsap.fromTo(newCardEl, {y: -200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3, onComplete: playCardSlap});
                     showAlert("БОТ ПЕРЕВЕЛ!", "#ffea00");
                     isPlayerDefending = true; isPlayerTurn = false;
                     setTimeout(() => { isAnimating = false; }, 600);
@@ -842,7 +914,7 @@
                 isAnimating = true;
                 renderTable(); updateSelectionVisuals(); updateUI();
                 const newCardEl = document.getElementById('tableArea').lastChild.querySelector('.bout-defend');
-                gsap.fromTo(newCardEl, {y: -200, opacity: 0, x: 15}, {y: 0, opacity: 1, x: 15, duration: 0.3});
+                gsap.fromTo(newCardEl, {y: -200, opacity: 0, x: 15}, {y: 0, opacity: 1, x: 15, duration: 0.3, onComplete: playCardSlap});
                 setTimeout(() => { isAnimating = false; }, 600);
             } else {
                 botNeedsToTake = true;
