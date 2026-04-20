@@ -140,6 +140,38 @@
         #alertToast { top: -120px; background: rgba(255, 0, 60, 0.9); box-shadow: 0 10px 30px rgba(255, 0, 60, 0.6); border: 2px solid #fff; pointer-events: none;}
         #alertToast.show { top: 80px; }
         #alertToast h3 { margin: 0; font-size: 16px; color: #fff; text-transform: uppercase; text-align: center;}
+
+        /* BALANCE BAR */
+        #balance-bar { display: flex; gap: 8px; align-items: center; }
+        .balance-chip {
+            background: rgba(0,0,0,0.55); border-radius: 20px; padding: 4px 10px;
+            font-size: 13px; font-weight: 900; display: flex; align-items: center; gap: 5px;
+            border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(6px);
+        }
+        .balance-chip.cc { color: #00f3ff; border-color: rgba(0,243,255,0.3); }
+        .balance-chip.gf { color: #ffcc44; border-color: rgba(255,204,68,0.3); }
+
+        /* ABILITY PANEL */
+        #abilityPanel {
+            position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%);
+            display: none; gap: 16px; z-index: 101;
+        }
+        .btn-ability {
+            width: 58px; height: 58px; border-radius: 50%; border: 2px solid;
+            font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.65); backdrop-filter: blur(8px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: transform 0.12s, opacity 0.2s;
+            position: relative; flex-shrink: 0;
+        }
+        .btn-ability:active { transform: scale(0.88); }
+        .btn-ability.locked { opacity: 0.32; cursor: not-allowed; pointer-events: none; }
+        .btn-ability .ability-label {
+            position: absolute; bottom: -17px; left: 50%; transform: translateX(-50%);
+            font-size: 9px; font-weight: 900; text-transform: uppercase;
+            letter-spacing: 0.5px; white-space: nowrap; color: rgba(255,255,255,0.7);
+        }
+        #btn-oracle { border-color: #b534fa; color: #b534fa; }
+        #btn-rewind { border-color: #00f3ff; color: #00f3ff; }
     </style>
 </head>
 <body>
@@ -164,6 +196,10 @@
 
         <div id="topUI">
             <button class="btn-sm" onclick="returnToLobby()">◀ Сдаться</button>
+            <div id="balance-bar">
+                <div class="balance-chip cc">🪙 <span id="cc-balance">0</span></div>
+                <div class="balance-chip gf">🪶 <span id="gf-balance">0</span></div>
+            </div>
         </div>
 
         <div class="game-area" id="gameArea">
@@ -191,6 +227,15 @@
             <button class="btn-action" id="btnBito" onclick="actionBito()">БИТО</button>
             <button class="btn-action" id="btnTake" onclick="actionTake()">БЕРУ</button>
             <button class="btn-action" id="btnGive" onclick="actionGive()">ОТДАТЬ</button>
+        </div>
+
+        <div id="abilityPanel">
+            <button class="btn-ability locked" id="btn-oracle" onclick="useOracle()">
+                🔮<span class="ability-label">Oracle</span>
+            </button>
+            <button class="btn-ability locked" id="btn-rewind" onclick="useRewind()">
+                ⏪<span class="ability-label">Rewind</span>
+            </button>
         </div>
 
         <div id="factToast">
@@ -297,6 +342,7 @@
             document.getElementById('gameArea').style.display = 'none';
             document.getElementById('topUI').style.display = 'none';
             document.getElementById('actionUI').style.display = 'none';
+            document.getElementById('abilityPanel').style.display = 'none';
             document.getElementById('endOverlay').style.display = 'none';
             document.getElementById('lobbyUI').style.display = 'flex';
         }
@@ -349,6 +395,7 @@
             document.getElementById('gameArea').style.display = 'flex';
             document.getElementById('topUI').style.display = 'flex';
             document.getElementById('actionUI').style.display = 'flex';
+            document.getElementById('abilityPanel').style.display = 'flex';
 
             deck = createDeck();
             trumpCard = deck[0]; trumpSuit = trumpCard.suit;
@@ -641,11 +688,19 @@
                 if (!botNeedsToTake) setTimeout(() => { isAnimating = false; botDefend(); }, 600);
                 else isAnimating = false;
             } else if (isPlayerDefending) {
-                table[table.length - 1].defend = card;
+                // Fix: always target the FIRST undefended pair this card can beat,
+                // not table[last]. Prevents wrong-slot placement after bot transfer.
+                const targetIdx = table.findIndex(p => p.defend === null && canBeat(card, p.attack));
+                if (targetIdx === -1) { isAnimating = false; return; }
+                table[targetIdx].defend = card;
                 renderTable(); updateSelectionVisuals(); updateUI();
-                const newCardEl = document.getElementById('tableArea').lastChild.querySelector('.bout-defend');
-                gsap.fromTo(newCardEl, {y: 200, opacity: 0, x: 15}, {y: 0, opacity: 1, x: 15, duration: 0.3});
-                setTimeout(() => { isAnimating = false; botAttack(); }, 600);
+                const pairEls = document.getElementById('tableArea').querySelectorAll('.bout-pair');
+                const newCardEl = pairEls[targetIdx]?.querySelector('.bout-defend');
+                if (newCardEl) gsap.fromTo(newCardEl, {y: 200, opacity: 0, x: 15}, {y: 0, opacity: 1, x: 15, duration: 0.3});
+                // Fix: bot must NOT be called while any pair is still undefended.
+                // Release isAnimating and let player continue; call botAttack only when all covered.
+                const allDefended = table.every(p => p.defend !== null);
+                setTimeout(() => { isAnimating = false; if (allDefended) botAttack(); }, 600);
             }
         }
 
@@ -847,6 +902,47 @@
             document.getElementById('factText').innerText = `"${fact.substring(0, 35)}..."`;
             toast.classList.add('show');
             setTimeout(() => toast.classList.remove('show'), 3500);
+        }
+
+        // --- ECONOMY & BALANCE ---
+        let playerCC = 0; // Chicken Coins
+        let playerGF = 0; // Golden Feathers
+
+        function updateBalanceUI() {
+            document.getElementById('cc-balance').innerText = playerCC;
+            document.getElementById('gf-balance').innerText = playerGF;
+        }
+
+        // Call after loading user data from /get_user
+        window.setBalance = function(cc, gf) {
+            playerCC = cc || 0;
+            playerGF = gf || 0;
+            updateBalanceUI();
+        }
+
+        // --- CARD SKIN ---
+        // Changes the back-face texture for all live hand cards and the deck stack.
+        // skinId must match a CSS class: 'shirt-basic' | 'shirt-neon' | 'shirt-gold'
+        window.setCardSkin = function(skinId) {
+            currentShirt = skinId;
+            for (const el of botCardEls.values()) {
+                el.className = `card card-back ${skinId}`;
+            }
+            const deckStack = document.getElementById('deckStackUI');
+            if (deckStack) deckStack.className = `card card-back deck-stack ${skinId}`;
+        }
+
+        // --- ABILITIES (stubs, unlock via inventory) ---
+        window.useOracle = function() {
+            if (document.getElementById('btn-oracle').classList.contains('locked')) return;
+            // TODO: reveal one bot card for 3 seconds
+            showAlert('Oracle: скоро...', '#b534fa');
+        }
+
+        window.useRewind = function() {
+            if (document.getElementById('btn-rewind').classList.contains('locked')) return;
+            // TODO: undo last played card
+            showAlert('Rewind: скоро...', '#00f3ff');
         }
     </script>
 </body>
