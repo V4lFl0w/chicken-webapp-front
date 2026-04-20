@@ -728,7 +728,7 @@
                     if (botNeedsToTake) btnGive.style.display = 'block';
                     else if (table.every(p => p.defend !== null)) btnBito.style.display = 'block';
                 }
-            } else if (isPlayerDefending && !playerNeedsToTake) {
+            } else if (isPlayerDefending) {
                 if (table.some(p => p.defend === null)) btnTake.style.display = 'block';
             }
         }
@@ -826,7 +826,7 @@
         }
 
         window.actionTake = function() {
-            if (isAnimating) return;
+            if (isAnimating || playerNeedsToTake) return;
             playerNeedsToTake = true; isAnimating = true;
             updateUI(); updateSelectionVisuals();
             showAlert('Ты берешь! Бот подкидывает...', '#ffea00');
