@@ -615,6 +615,55 @@
             .play-btn { width: 100%; }
             .stats-row { grid-template-columns: 1fr; }
         }
+
+        /* Wheel of Fortune */
+        .wheel-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 8px 0 4px;
+        }
+        .wheel-pointer {
+            font-size: 28px;
+            line-height: 1;
+            margin-bottom: 4px;
+            color: var(--gold);
+            filter: drop-shadow(0 0 8px rgba(255,204,68,0.7));
+        }
+        #wheelRotator {
+            width: 280px;
+            height: 280px;
+            transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 1.0);
+            will-change: transform;
+        }
+        .wheel-result {
+            min-height: 36px;
+            font-size: 20px;
+            font-weight: 900;
+            text-align: center;
+            margin: 14px 0 6px;
+            color: var(--gold);
+        }
+        .wheel-cooldown {
+            font-size: 13px;
+            color: var(--text-muted);
+            text-align: center;
+            margin-top: 8px;
+        }
+        .btn-spin {
+            width: 200px;
+            font-size: 16px;
+            padding: 14px;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--gold) 0%, #ff9f43 100%);
+            color: #071019;
+            font-weight: 900;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(255,204,68,0.3);
+            transition: opacity 0.2s;
+        }
+        .btn-spin:disabled { opacity: 0.45; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -644,6 +693,7 @@
             <div class="hero-actions">
                 <button class="btn btn-primary" onclick="openModal('modalBank', 'bank')">Открыть магазин</button>
                 <button class="btn btn-secondary" onclick="openModal('modalProfile', 'profile')">Профиль и настройки</button>
+                <button class="btn btn-secondary" id="btnWheelHero" onclick="openModal('modalWheel', 'wheel')" style="color:var(--gold); border-color:rgba(255,204,68,0.3);">🎡 Колесо удачи</button>
             </div>
         </section>
 
@@ -1033,6 +1083,27 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="modalWheel">
+        <div class="modal-content" style="min-height:auto;">
+            <button class="modal-close" onclick="closeModal('modalWheel')">✕</button>
+            <div class="modal-title" style="color:var(--gold); text-align:center;">🎡 Колесо удачи</div>
+            <div style="color:var(--text-muted); font-size:13px; text-align:center; margin:-10px 0 18px;">Одно вращение каждые 24 часа</div>
+
+            <div class="wheel-wrap">
+                <div class="wheel-pointer">▼</div>
+                <div id="wheelRotator">
+                    <canvas id="wheelCanvas" width="280" height="280"></canvas>
+                </div>
+            </div>
+
+            <div class="wheel-result" id="wheelResult"></div>
+            <div style="display:flex; justify-content:center;">
+                <button class="btn-spin" id="btnSpin" onclick="spinWheel()">КРУТИТЬ</button>
+            </div>
+            <div class="wheel-cooldown hidden" id="wheelCooldown"></div>
+        </div>
+    </div>
+
     <nav class="bottom-nav">
         <div class="nav-item active" id="nav-games" onclick="switchNav('games')">
             <span class="nav-icon">🎮</span>
@@ -1112,6 +1183,7 @@
                 setText('statGames', Number(data.games_played) || 0);
                 setText('statWins', Number(data.wins) || 0);
 
+                updateWheelUI(data.can_spin !== false, data.cooldown_seconds || 0);
                 applyUserUI(nickname);
             } catch (e) {
                 console.error('Ошибка связи с сервером:', e);
@@ -1267,6 +1339,178 @@
                 }
             });
         });
+
+        // ── WHEEL OF FORTUNE ──────────────────────────────────────────────
+        const WHEEL_PRIZES = [
+            { id: 0, type: 'cc', amount: 100,  label: '100 🪙', color: '#00b8d9' },
+            { id: 1, type: 'cc', amount: 500,  label: '500 🪙', color: '#0055cc' },
+            { id: 2, type: 'cc', amount: 1000, label: '1K 🪙',  color: '#7b2fff' },
+            { id: 3, type: 'gf', amount: 2,    label: '2 🪶',   color: '#ffcc44' },
+            { id: 4, type: 'gf', amount: 5,    label: '5 🪶',   color: '#ff8c00' },
+            { id: 5, type: 'gf', amount: 10,   label: '10 🪶',  color: '#e8003d' },
+        ];
+        let wheelAngle = 0;
+        let wheelSpinning = false;
+        let wheelInitialized = false;
+
+        function drawWheel() {
+            const canvas = document.getElementById('wheelCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const r = cx - 4;
+            const n = WHEEL_PRIZES.length;
+            const seg = (2 * Math.PI) / n;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            WHEEL_PRIZES.forEach((prize, i) => {
+                const start = i * seg - Math.PI / 2;
+                const end = start + seg;
+
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.arc(cx, cy, r, start, end);
+                ctx.closePath();
+                ctx.fillStyle = prize.color;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(start + seg / 2);
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 15px Montserrat, sans-serif';
+                ctx.shadowColor = 'rgba(0,0,0,0.6)';
+                ctx.shadowBlur = 4;
+                ctx.fillText(prize.label, r - 10, 6);
+                ctx.restore();
+            });
+
+            // Outer ring
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Center hub
+            ctx.beginPath();
+            ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+            ctx.fillStyle = '#0a0d16';
+            ctx.fill();
+            ctx.strokeStyle = '#00f3ff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+
+        function updateWheelUI(canSpin, cooldownSeconds) {
+            const btn = document.getElementById('btnSpin');
+            const cd = document.getElementById('wheelCooldown');
+            if (!btn || !cd) return;
+            if (canSpin) {
+                btn.disabled = false;
+                cd.classList.add('hidden');
+                cd.textContent = '';
+            } else {
+                btn.disabled = true;
+                cd.classList.remove('hidden');
+                const h = Math.floor(cooldownSeconds / 3600);
+                const m = Math.floor((cooldownSeconds % 3600) / 60);
+                const s = cooldownSeconds % 60;
+                cd.textContent = `Следующее вращение через: ${h}ч ${m}м ${s}с`;
+            }
+        }
+
+        async function spinWheel() {
+            if (wheelSpinning) return;
+            const btn = document.getElementById('btnSpin');
+            const resultEl = document.getElementById('wheelResult');
+            if (btn) btn.disabled = true;
+            if (resultEl) resultEl.textContent = '';
+            wheelSpinning = true;
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/spin_wheel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_id: user.id })
+                });
+
+                if (res.status === 429) {
+                    const secs = parseInt(res.headers.get('X-Cooldown-Seconds') || '86400', 10);
+                    updateWheelUI(false, secs);
+                    wheelSpinning = false;
+                    return;
+                }
+
+                if (!res.ok) throw new Error('spin failed');
+                const data = await res.json();
+
+                // Calculate target rotation
+                const prizeId = data.prize_id;
+                const segDeg = 360 / WHEEL_PRIZES.length;
+                const segCenter = prizeId * segDeg + segDeg / 2;
+                const currentNorm = wheelAngle % 360;
+                const targetNorm = (360 - segCenter + 360) % 360;
+                const delta = (targetNorm - currentNorm + 360) % 360;
+                wheelAngle += 1440 + delta;
+
+                const rotator = document.getElementById('wheelRotator');
+                rotator.style.transform = `rotate(${wheelAngle}deg)`;
+
+                rotator.addEventListener('transitionend', function onDone() {
+                    rotator.removeEventListener('transitionend', onDone);
+                    wheelSpinning = false;
+
+                    const prize = WHEEL_PRIZES[prizeId];
+                    if (resultEl) {
+                        resultEl.textContent = `+${prize.label} — повезло!`;
+                    }
+
+                    // Update global balances
+                    if (data.chicken_coins !== undefined) {
+                        userCoins = data.chicken_coins;
+                        setText('bankBalance', userCoins);
+                        setText('modalCoins', userCoins);
+                        setText('profileCoins', userCoins);
+                    }
+                    if (data.golden_feathers !== undefined) {
+                        userCrystals = data.golden_feathers;
+                        setText('bankCrystals', userCrystals);
+                        setText('modalCrystals', userCrystals);
+                    }
+
+                    updateWheelUI(false, 86400);
+                }, { once: true });
+
+            } catch (e) {
+                wheelSpinning = false;
+                if (btn) btn.disabled = false;
+                if (resultEl) resultEl.textContent = 'Ошибка соединения. Попробуй ещё раз.';
+            }
+        }
+
+        document.getElementById('modalWheel').addEventListener('transitionend', () => {});
+        document.getElementById('modalWheel').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('modalWheel')) {
+                closeModal('modalWheel');
+            }
+        });
+
+        const _origOpenModal = openModal;
+        openModal = function(modalId, navId) {
+            _origOpenModal(modalId, navId);
+            if (modalId === 'modalWheel' && !wheelInitialized) {
+                wheelInitialized = true;
+                drawWheel();
+            }
+        };
+        // ── END WHEEL ─────────────────────────────────────────────────────
 
         fetchGlobalData();
     </script>
