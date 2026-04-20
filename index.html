@@ -630,8 +630,8 @@
                 </div>
 
                 <div class="balance-wrap">
-                    <div class="balance-pill gold"><span id="bankBalance">0</span> 🪙</div>
-                    <div class="balance-pill crystal"><span id="bankCrystals">0</span> 💎</div>
+                    <div class="balance-pill gold"><span id="bankBalance">0</span> 🪙 CC</div>
+                    <div class="balance-pill crystal"><span id="bankCrystals">0</span> 🪶 GF</div>
                 </div>
             </div>
         </header>
@@ -929,8 +929,8 @@
                 <div class="panel-title">Твой баланс</div>
                 <div class="panel-subtitle">Общая валюта хаба и редкая валюта для будущих наград и лутбоксов.</div>
                 <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
-                    <div class="balance-pill gold"><span id="modalCoins">0</span> 🪙</div>
-                    <div class="balance-pill crystal"><span id="modalCrystals">0</span> 💎</div>
+                    <div class="balance-pill gold"><span id="modalCoins">0</span> 🪙 CC</div>
+                    <div class="balance-pill crystal"><span id="modalCrystals">0</span> 🪶 GF</div>
                 </div>
             </div>
 
@@ -1106,8 +1106,8 @@
                 const data = await res.json();
 
                 nickname = (data.nickname && data.nickname.trim() !== "") ? data.nickname : (localNick || baseNickname);
-                userCoins = Number(data.coins) || Number(localStorage.getItem('hub_coins')) || 0;
-                userCrystals = Number(data.crystals) || Number(localStorage.getItem('hub_crystals')) || 0;
+                userCoins = Number(data.chicken_coins ?? data.coins) || Number(localStorage.getItem('hub_coins')) || 0;
+                userCrystals = Number(data.golden_feathers) || Number(localStorage.getItem('hub_crystals')) || 0;
 
                 setText('statGames', Number(data.games_played) || 0);
                 setText('statWins', Number(data.wins) || 0);
