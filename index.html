@@ -1281,12 +1281,12 @@
                 nickname = newName;
                 localStorage.setItem('hub_nickname', nickname);
                 applyUserUI(nickname);
-                setStatus('profileStatus', 'Ник успешно сохранён.', 'ok');
+                setStatus('profileStatus', 'Сохранено на сервере.', 'ok');
             } catch (e) {
                 nickname = newName;
                 localStorage.setItem('hub_nickname', nickname);
                 applyUserUI(nickname);
-                setStatus('profileStatus', 'Ник сохранён локально. Серверный роут ещё нужно подключить.', 'ok');
+                setStatus('profileStatus', 'Ошибка сети. Ник сохранён локально.', 'err');
             }
         }
 

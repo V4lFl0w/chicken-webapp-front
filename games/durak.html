@@ -764,7 +764,7 @@
 
             if (isTransfer) {
                 table.push({ attack: card, defend: null });
-                isPlayerDefending = false; isPlayerTurn = false; cardsAddedThisBout++;
+                isPlayerDefending = !isPlayerDefending; isPlayerTurn = !isPlayerTurn; cardsAddedThisBout++;
                 renderTable(); updateSelectionVisuals(); updateUI();
                 const newCardEl = document.getElementById('tableArea').lastChild.querySelector('.bout-attack');
                 gsap.fromTo(newCardEl, {y: 200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3, onComplete: playCardSlap});
@@ -914,7 +914,7 @@
                     const newCardEl = document.getElementById('tableArea').lastChild.querySelector('.bout-attack');
                     gsap.fromTo(newCardEl, {y: -200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3, onComplete: playCardSlap});
                     showAlert("БОТ ПЕРЕВЕЛ!", "#ffea00");
-                    isPlayerDefending = true; isPlayerTurn = false;
+                    isPlayerDefending = !isPlayerDefending; isPlayerTurn = !isPlayerTurn;
                     setTimeout(() => { isAnimating = false; }, 600);
                     return;
                 }
