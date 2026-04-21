@@ -61,11 +61,11 @@
         .opponent-area { display: flex; justify-content: center; height: 100px; align-items: center; position: relative;}
         .bot-info { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); font-size: 14px; font-weight: bold; color: #fff; background: rgba(0,0,0,0.5); padding: 4px 12px; border-radius: 10px; backdrop-filter: blur(5px);}
         
-        .table-area { flex: 1; display: flex; justify-content: center; align-items: center; gap: 15px; flex-wrap: wrap; padding: 20px; position: relative; z-index: 10; }
+        .table-area { flex: 1; display: flex; justify-content: center; align-items: center; align-content: center; gap: 12px; flex-wrap: wrap; padding: 20px; position: relative; z-index: 10; }
         
-        .deck-area { position: absolute; left: -10px; top: 50%; transform: translateY(-50%); width: 80px; height: 100px; }
-        .trump-card { position: absolute; top: 15px; left: 35px; transform: rotate(90deg); z-index: 1; }
-        .deck-stack { position: absolute; top: 0; left: 0; z-index: 2; box-shadow: -5px 5px 15px rgba(0,0,0,0.8); }
+        .deck-area { position: absolute; left: -10px; top: 50%; transform: translateY(-50%); width: 90px; height: 110px; }
+        .trump-card { position: absolute; top: 10px; left: 40px; transform: rotate(90deg); z-index: 0; }
+        .deck-stack { position: absolute; top: 0; left: 0; z-index: 1; box-shadow: -5px 5px 15px rgba(0,0,0,0.8); }
         .deck-count { position: absolute; top: -10px; right: -10px; background: #00f3ff; color: #000; font-weight: 900; font-size: 14px; width: 28px; height: 28px; border-radius: 50%; display: flex; justify-content: center; align-items: center; z-index: 5; border: 2px solid #000; box-shadow: 0 2px 5px rgba(0,0,0,0.5);}
 
         .discard-area { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); width: 70px; height: 100px; opacity: 0.5; border: 2px dashed rgba(255,255,255,0.2); border-radius: 8px; display: flex; justify-content: center; align-items: center; font-weight: bold; color: rgba(255,255,255,0.3);}
@@ -83,7 +83,7 @@
         .card.red { color: #ff003c; } .card.black { color: #1e272e; }
         .card-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; opacity: 0.15; }
         
-        .card.disabled { filter: grayscale(100%) brightness(0.7); cursor: not-allowed;}
+        .card.disabled { cursor: default; }
         
         .card.selected-card {
             filter: drop-shadow(0 0 15px #00f3ff) !important;
@@ -101,7 +101,7 @@
         .card-back.shirt-neon { background: linear-gradient(135deg, #ff003c 0%, #b534fa 100%); border: 2px solid #ffea00; }
         .card-back.shirt-gold { background: linear-gradient(135deg, #f1c40f 0%, #e67e22 100%); border: 2px solid #fff; box-shadow: 0 0 15px rgba(241, 196, 15, 0.5);}
 
-        .bout-pair { position: relative; width: 65px; height: 110px; }
+        .bout-pair { position: relative; width: 80px; height: 115px; flex-shrink: 0; }
         .bout-attack { position: absolute; top: 0; left: 0; z-index: 10; box-shadow: 2px 4px 10px rgba(0,0,0,0.6);}
         .bout-defend { position: absolute; top: 15px; left: 15px; z-index: 11; box-shadow: -2px 4px 10px rgba(0,0,0,0.8); }
 
@@ -442,8 +442,8 @@
         const RANK_COL  = { 'A': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8, '10': 9, 'J': 10, 'Q': 11, 'K': 12 };
 
         function cardSpriteStyle(rank, suit) {
-            // zoom=1.04 makes each card 4% larger than container → overflow:hidden clips the SVG green border
-            const zoom = 1.04, cols = 13, rows = 4, cW = 65, cH = 95;
+            // zoom=1.08 makes each card 8% larger than container → overflow:hidden clips the SVG green border
+            const zoom = 1.08, cols = 13, rows = 4, cW = 65, cH = 95;
             const cellW = cW * zoom, cellH = cH * zoom;
             const bgW = cellW * cols, bgH = cellH * rows;
             const col = RANK_COL[rank], row = SUIT_ROW[suit];
@@ -653,9 +653,9 @@
                 const el = playerCardEls.get(card.id);
                 if (!el || card === draggingCard) return; // never reset transform mid-drag
 
-                const angle = (i - (n - 1) / 2) * 8;
-                const yOff  = Math.abs(i - (n - 1) / 2) * 5;
-                const xOff  = (i - (n - 1) / 2) * 35;
+                const angle = (i - (n - 1) / 2) * 7;
+                const yOff  = Math.abs(i - (n - 1) / 2) * 4;
+                const xOff  = (i - (n - 1) / 2) * 44;
                 const base  = `rotate(${angle}deg) translateY(${yOff}px)`;
 
                 el.style.left            = `calc(50% + ${xOff}px - 32px)`;
@@ -665,7 +665,7 @@
 
                 const isPlayable = playable.has(card.id);
                 el.classList.toggle('playable',      isPlayable);
-                el.classList.toggle('disabled',      !isPlayable);
+                el.classList.remove('disabled'); // cards are always fully visible
                 el.classList.toggle('selected-card', selectedCard === card);
                 el.style.transform = selectedCard === card
                     ? `${base} translateY(-25px) scale(1.1)`
@@ -679,7 +679,7 @@
                 const el = botCardEls.get(card.id);
                 if (!el) return;
                 const angle = (i - (nb - 1) / 2) * 5;
-                const xOff  = (i - (nb - 1) / 2) * 15;
+                const xOff  = (i - (nb - 1) / 2) * 20;
                 el.style.left      = `calc(50% + ${xOff}px - 32px)`;
                 el.style.zIndex    = i + 1;
                 el.style.transform = `rotate(${angle}deg)`;
