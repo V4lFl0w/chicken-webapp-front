@@ -76,7 +76,7 @@
         /* КАРТЫ */
         .card {
             width: 65px; height: 95px; background-color: #fff !important; border: none !important; box-shadow: none !important;
-            border-radius: 6px;
+            border-radius: 6px; overflow: hidden;
             display: flex; flex-direction: column; justify-content: space-between; padding: 4px; box-sizing: border-box;
             font-weight: 900; font-size: 18px; position: absolute; transform-origin: bottom center; transition: filter 0.2s, transform 0.2s; touch-action: none; cursor: pointer;
         }
@@ -324,12 +324,56 @@
         })();
 
         const HISTORICAL_FACTS = [
-            "В 1912 году длина пути Титаника составила всего 4 дня до столкновения.",
-            "Первая в мире веб-камера была создана в Кембридже, чтобы смотреть за кофеваркой.",
-            "Клеопатра жила ближе к созданию iPhone, чем к постройке пирамиды Хеопса.",
-            "Самая короткая война в истории длилась 38 минут (Англо-занзибарская война 1896 г.).",
+            "Клеопатра жила ближе к запуску iPhone, чем к постройке пирамиды Хеопса.",
+            "Самая короткая война в истории длилась 38 минут — Англо-занзибарская война 1896 г.",
             "Оксфордский университет старше империи Ацтеков на несколько сотен лет.",
-            "Марио первоначально назывался Jumpman, а его профессия была плотник."
+            "Марио первоначально назывался Jumpman, а его профессия была плотник.",
+            "Первая в мире веб-камера была создана, чтобы наблюдать за кофеваркой в Кембридже.",
+            "В 1912 году Титаник шёл к айсбергу всего 4 дня.",
+            "Медузы существуют более 500 миллионов лет — они старше динозавров.",
+            "Шекспир изобрёл слово 'bedroom' (спальня) — до него такого слова не было.",
+            "Во время Второй мировой войны Швейцария случайно вторглась в Лихтенштейн.",
+            "Нинтендо основана в 1889 году — как компания по производству карт для игры ханафуда.",
+            "Средний возраст пирамиды Хеопса больше, чем разница между пирамидой и нами.",
+            "Вилка появилась в Европе позже, чем книгопечатание.",
+            "Первая компьютерная программная ошибка была настоящим жуком — мотыльком в реле.",
+            "Карты Таро изначально использовались просто для игры, не для предсказаний.",
+            "На Луне лежит мяч для гольфа, оставленный астронавтом Эдгаром Митчеллом в 1971 г.",
+            "Флаг Дании — самый старый непрерывно используемый государственный флаг в мире.",
+            "Самый длинный алфавит в мире — у языка кхмер: 74 буквы.",
+            "Бетховен сочинял музыку, будучи полностью глухим — он клал голову на рояль, чтобы чувствовать вибрации.",
+            "Стеклянные лягушки имеют прозрачную кожу — через неё видны их внутренние органы.",
+            "Австралия старше, чем понятие «Австралия»: её коренные жители живут здесь 65 000 лет.",
+            "В 2004 году Facebook задумывался как сеть только для студентов Гарварда.",
+            "Коровы лучше видят красный цвет, чем быки — при коррида быка раздражает движение, а не цвет плаща.",
+            "Люди — единственные приматы, у которых нет пигментации в белках глаз.",
+            "Самая длинная сага в истории го длилась 8 месяцев — один ход в неделю.",
+            "Скорость света вокруг Земли — примерно 7,5 оборота в секунду.",
+            "Слово 'robot' впервые появилось в пьесе Карела Чапека в 1920 году.",
+            "Первый SMS гласил: 'Merry Christmas' — и был отправлен в 1992 году.",
+            "Кошки спят 16 часов в сутки — то есть к 9 годам не спали больше 3 лет.",
+            "Каждый год Земля набирает около 40 000 тонн космической пыли.",
+            "Первая фотография котика была сделана Гарри Декером в 1880 году.",
+            "Муравьи могут нести до 50 раз больше своего веса — как человек несёт автомобиль.",
+            "Осьминоги имеют три сердца, голубую кровь и нейроны в щупальцах.",
+            "Молния ударяет в Землю около 100 раз в секунду.",
+            "На одного жителя Земли приходится примерно 10 квинтиллионов атомов в теле.",
+            "Нейтронная звезда размером с город Москву весит больше Солнца.",
+            "Карты с джокером появились в 1860-х для игры эухре, а не для гадания.",
+            "Колода из 52 карт — 8×10⁶⁷ уникальных тасовок. Любое перемешивание — почти наверняка первое в истории.",
+            "Игра в карты была запрещена во Франции во время Столетней войны — чтобы солдаты не отвлекались.",
+            "Первые пластиковые игральные карты появились в 1935 году — их придумали казино для долговечности.",
+            "Масть «червей» в средневековье символизировала духовенство, «пик» — дворянство.",
+            "Туз изначально был самой низкой картой в колоде, а не самой высокой.",
+            "В России карточный дурак появился не позднее XVIII века и упомянут у Пушкина.",
+            "Карточные игры изначально пришли в Европу с арабского востока в XIV веке.",
+            "В японской карточной игре ханафуда вместо цифр — изображения цветов и животных.",
+            "Покерный термин 'bluff' (блеф) происходит от голландского 'bluffen' — хвастаться.",
+            "Стандартная колода символизировала год: 52 карты = 52 недели, 4 масти = 4 сезона.",
+            "Гравюры на самых ранних европейских картах вырезались вручную из дерева.",
+            "Дама пик в ранних европейских картах изображала Афину или Жанну д'Арк.",
+            "В 2015 году самая дорогая карта в мире продана за $2,6 млн — покерный туз 1895 г.",
+            "На борту МКС астронавты играли в карты во время свободного времени."
         ];
         let unlockedFacts = JSON.parse(localStorage.getItem('vhub_facts')) || [];
 
@@ -398,9 +442,15 @@
         const RANK_COL  = { 'A': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8, '10': 9, 'J': 10, 'Q': 11, 'K': 12 };
 
         function cardSpriteStyle(rank, suit) {
-            const xPct = (RANK_COL[rank] / 12) * 100;
-            const yPct = (SUIT_ROW[suit]  /  3) * 100;
-            return { img: SPRITE_URL, size: '1300% 400%', pos: `${xPct}% ${yPct}%` };
+            // zoom=1.04 makes each card 4% larger than container → overflow:hidden clips the SVG green border
+            const zoom = 1.04, cols = 13, rows = 4, cW = 65, cH = 95;
+            const cellW = cW * zoom, cellH = cH * zoom;
+            const bgW = cellW * cols, bgH = cellH * rows;
+            const col = RANK_COL[rank], row = SUIT_ROW[suit];
+            const ovX = (cellW - cW) / 2, ovY = (cellH - cH) / 2;
+            const xPct = ((col * cellW - ovX) / (bgW - cW) * 100).toFixed(3);
+            const yPct = ((row * cellH - ovY) / (bgH - cH) * 100).toFixed(3);
+            return { img: SPRITE_URL, size: `${(bgW/cW*100).toFixed(1)}% ${(bgH/cH*100).toFixed(1)}%`, pos: `${xPct}% ${yPct}%` };
         }
 
         // --- SOUND ---
@@ -718,13 +768,21 @@
                 const pairDiv = document.createElement('div');
                 pairDiv.className = 'bout-pair';
 
-                const attackEl = renderCard(pair.attack);
-                attackEl.className += ' bout-attack';
+                const aSp = cardSpriteStyle(pair.attack.rank, pair.attack.suit);
+                const attackEl = document.createElement('div');
+                attackEl.className = 'card card-sprite bout-attack';
+                attackEl.style.backgroundImage    = `url('${aSp.img}')`;
+                attackEl.style.backgroundSize     = aSp.size;
+                attackEl.style.backgroundPosition = aSp.pos;
                 pairDiv.appendChild(attackEl);
 
                 if (pair.defend) {
-                    const defendEl = renderCard(pair.defend);
-                    defendEl.className += ' bout-defend';
+                    const dSp = cardSpriteStyle(pair.defend.rank, pair.defend.suit);
+                    const defendEl = document.createElement('div');
+                    defendEl.className = 'card card-sprite bout-defend';
+                    defendEl.style.backgroundImage    = `url('${dSp.img}')`;
+                    defendEl.style.backgroundSize     = dSp.size;
+                    defendEl.style.backgroundPosition = dSp.pos;
                     pairDiv.appendChild(defendEl);
                 }
                 tableEl.appendChild(pairDiv);
@@ -920,7 +978,7 @@
                     const newCardEl = document.getElementById('tableArea').lastChild.querySelector('.bout-attack');
                     gsap.fromTo(newCardEl, {y: -200, opacity: 0}, {y: 0, opacity: 1, duration: 0.3, onComplete: playCardSlap});
                     showAlert("БОТ ПЕРЕВЕЛ!", "#ffea00");
-                    setTimeout(() => { isAnimating = false; }, 600);
+                    setTimeout(() => { isAnimating = false; renderTable(); updateSelectionVisuals(); updateUI(); }, 600);
                     return;
                 }
             }
@@ -937,12 +995,13 @@
                 renderTable(); updateSelectionVisuals(); updateUI();
                 const newCardEl = document.getElementById('tableArea').lastChild.querySelector('.bout-defend');
                 gsap.fromTo(newCardEl, {y: -200, opacity: 0, x: 15}, {y: 0, opacity: 1, x: 15, duration: 0.3, onComplete: playCardSlap});
-                setTimeout(() => { isAnimating = false; }, 600);
+                setTimeout(() => { isAnimating = false; renderTable(); updateSelectionVisuals(); updateUI(); }, 600);
             } else {
                 botNeedsToTake = true;
-                isAnimating = false; // bot plays nothing — explicitly unlock input
+                isAnimating = false;
+                isPlayerTurn = true; isPlayerDefending = false;
                 showAlert("Бот берет! Подкидывай", "#b534fa");
-                updateUI(); updateSelectionVisuals();
+                renderTable(); updateUI(); updateSelectionVisuals();
             }
         }
 
@@ -997,13 +1056,13 @@
         }
 
         function dropFact() {
-            const fact = HISTORICAL_FACTS[Math.floor(Math.random() * HISTORICAL_FACTS.length)];
-            if (!unlockedFacts.includes(fact)) {
-                unlockedFacts.push(fact);
-                localStorage.setItem('vhub_facts', JSON.stringify(unlockedFacts));
-            }
+            const newFacts = HISTORICAL_FACTS.filter(f => !unlockedFacts.includes(f));
+            if (newFacts.length === 0) return; // all facts collected — nothing to show
+            const fact = newFacts[Math.floor(Math.random() * newFacts.length)];
+            unlockedFacts.push(fact);
+            localStorage.setItem('vhub_facts', JSON.stringify(unlockedFacts));
             const toast = document.getElementById('factToast');
-            document.getElementById('factText').innerText = `"${fact.substring(0, 35)}..."`;
+            document.getElementById('factText').innerText = `"${fact.substring(0, 40)}..."`;
             toast.classList.add('show');
             setTimeout(() => toast.classList.remove('show'), 3500);
         }
