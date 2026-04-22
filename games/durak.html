@@ -18,7 +18,7 @@
             transition: background 0.5s ease;
         }
         .theme-dark { background: #0b0e14 !important; }
-        .theme-green { background: radial-gradient(circle, #103823 0%, #06170e 100%) !important; }
+        .theme-green { background: radial-gradient(circle at center, #2b5c3f 0%, #0a1f14 100%) !important; }
         .theme-cyber { background: radial-gradient(circle, #130b2e 0%, #050212 100%) !important; }
 
         /* ОСНОВНОЙ КОНТЕЙНЕР ПОВЕРХ ФОНА */
@@ -76,7 +76,7 @@
         /* КАРТЫ */
         .card {
             width: 65px; height: 95px; background-color: #fff !important; border: none !important; box-shadow: none !important;
-            border-radius: 6px; clip-path: inset(2px round 6px);
+            border-radius: 6px; clip-path: inset(3.5px round 6px) !important;
             display: flex; flex-direction: column; justify-content: space-between; padding: 4px; box-sizing: border-box;
             font-weight: 900; font-size: 18px; position: absolute; transform-origin: bottom center; transition: filter 0.2s, transform 0.2s; touch-action: none; cursor: pointer;
         }
@@ -474,6 +474,7 @@
         const suits = ['♠', '♣', '♥', '♦'];
         const ranks = ['6','7','8','9','10','J','Q','K','A'];
         const values = {'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14};
+        const RANK_WEIGHT = {'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14};
 
         let deck = [], trumpCard = null, trumpSuit = '';
         let playerHand = [], botHand = [];
@@ -527,7 +528,7 @@
 
         const DurakRules = {
             canDefend(defendCard, attackCard, trump) {
-                if (defendCard.suit === attackCard.suit && defendCard.val > attackCard.val) return true;
+                if (defendCard.suit === attackCard.suit && RANK_WEIGHT[defendCard.rank] > RANK_WEIGHT[attackCard.rank]) return true;
                 if (defendCard.suit === trump && attackCard.suit !== trump) return true;
                 return false;
             },
@@ -648,9 +649,10 @@
                 const el = playerCardEls.get(card.id);
                 if (!el || card === draggingCard) return; // never reset transform mid-drag
 
-                const angle = (i - (n - 1) / 2) * 7;
-                const yOff  = Math.abs(i - (n - 1) / 2) * 4;
-                const xOff  = (i - (n - 1) / 2) * 44;
+                const step  = Math.min(44, 260 / Math.max(n, 1));
+                const angle = (i - (n - 1) / 2) * Math.min(7, 50 / Math.max(n, 1));
+                const yOff  = Math.abs(i - (n - 1) / 2) * 3;
+                const xOff  = (i - (n - 1) / 2) * step;
                 const base  = `rotate(${angle}deg) translateY(${yOff}px)`;
 
                 el.style.left            = `calc(50% + ${xOff}px - 32px)`;
@@ -673,8 +675,9 @@
             botHand.forEach((card, i) => {
                 const el = botCardEls.get(card.id);
                 if (!el) return;
-                const angle = (i - (nb - 1) / 2) * 5;
-                const xOff  = (i - (nb - 1) / 2) * 20;
+                const bStep = Math.min(20, 200 / Math.max(nb, 1));
+                const angle = (i - (nb - 1) / 2) * Math.min(5, 40 / Math.max(nb, 1));
+                const xOff  = (i - (nb - 1) / 2) * bStep;
                 el.style.left      = `calc(50% + ${xOff}px - 32px)`;
                 el.style.zIndex    = i + 1;
                 el.style.transform = `rotate(${angle}deg)`;
@@ -933,12 +936,12 @@
 
             let cardToPlay = null;
             if (table.length === 0) {
-                const nonTrumps = botHand.filter(c => c.suit !== trumpSuit).sort((a, b) => a.val - b.val);
+                const nonTrumps = botHand.filter(c => c.suit !== trumpSuit).sort((a, b) => RANK_WEIGHT[a.rank] - RANK_WEIGHT[b.rank]);
                 cardToPlay = nonTrumps.length > 0
                     ? nonTrumps[0]
-                    : [...botHand].sort((a, b) => a.val - b.val)[0]; // spread to avoid mutating botHand
+                    : [...botHand].sort((a, b) => RANK_WEIGHT[a.rank] - RANK_WEIGHT[b.rank])[0];
             } else {
-                const validCards = botHand.filter(c => getTableRanks().includes(c.rank)).sort((a, b) => a.val - b.val);
+                const validCards = botHand.filter(c => getTableRanks().includes(c.rank)).sort((a, b) => RANK_WEIGHT[a.rank] - RANK_WEIGHT[b.rank]);
                 const cheapValid = validCards.filter(c => c.suit !== trumpSuit);
                 cardToPlay = cheapValid.length > 0 ? cheapValid[0] : null;
             }
@@ -981,7 +984,7 @@
             const undefendedPair = table.find(p => p.defend === null);
             if (!undefendedPair) { isAnimating = false; return; }
 
-            const validCards = botHand.filter(c => canBeat(c, undefendedPair.attack)).sort((a, b) => a.val - b.val);
+            const validCards = botHand.filter(c => canBeat(c, undefendedPair.attack)).sort((a, b) => RANK_WEIGHT[a.rank] - RANK_WEIGHT[b.rank]);
             const cheapDefend = validCards.filter(c => c.suit === undefendedPair.attack.suit);
             const cardToPlay = cheapDefend.length > 0 ? cheapDefend[0] : (validCards.length > 0 ? validCards[0] : null);
 
