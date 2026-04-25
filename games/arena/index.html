@@ -160,9 +160,9 @@
 
     // ── WAVE DEFINITIONS ──
     const WAVES = [
-        { count: 5,  hp: 30,  speed: 70,  dmg: 7,  r: 15 },
-        { count: 8,  hp: 65,  speed: 92,  dmg: 11, r: 15 },
-        { count: 12, hp: 110, speed: 115, dmg: 15, r: 15 },
+        { count: 5,  hp: 30,  speed: 56,  dmg: 7,  r: 15 },
+        { count: 8,  hp: 65,  speed: 74,  dmg: 11, r: 15 },
+        { count: 12, hp: 110, speed: 92,  dmg: 15, r: 15 },
     ];
 
     // ── PERK POOL ──
@@ -241,7 +241,7 @@
                 x, y,
                 hp: def.hp, maxHP: def.hp, spd: def.speed, dmg: def.dmg, r: def.r, id: eid++,
                 wanderAngle: 0, wanderTimer: Math.random() * 0.5, // wander: ±30° offset
-                hitFlash: 0
+                hitFlash: 0, dmgCooldown: 0
             });
         }
     }
@@ -362,9 +362,9 @@
             player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y + ny * player.spd * dt));
         }
 
-        // Auto-attack: only when standing still (Archero style)
+        // Auto-attack: always fires; -30% damage while moving
         player.atkTimer -= dt;
-        if (!moving && player.atkTimer <= 0 && enemies.length > 0) {
+        if (player.atkTimer <= 0 && enemies.length > 0) {
             let nearest = null, nearD = Infinity;
             enemies.forEach(en => {
                 const dx = en.x - player.x, dy = en.y - player.y;
@@ -374,7 +374,8 @@
             if (nearest) {
                 const dx = nearest.x - player.x, dy = nearest.y - player.y;
                 const len = Math.sqrt(dx*dx + dy*dy) || 1;
-                bullets.push({ x: player.x, y: player.y, vx: dx/len * 430, vy: dy/len * 430, dmg: player.dmg, r: 5 });
+                const dmg = moving ? Math.round(player.dmg * 0.7) : player.dmg;
+                bullets.push({ x: player.x, y: player.y, vx: dx/len * 430, vy: dy/len * 430, dmg, r: 5 });
                 player.atkTimer = player.atkCd;
                 burst(player.x, player.y, 'rgba(0,243,255,0.5)', 3);
                 playShoot();
@@ -418,14 +419,16 @@
                 en.wanderAngle = (Math.random() - 0.5) * (Math.PI / 3); // ±30°
                 en.wanderTimer = 0.5;
             }
-            en.hitFlash = Math.max(0, en.hitFlash - dt * 25);
+            en.hitFlash    = Math.max(0, en.hitFlash - dt * 25);
+            en.dmgCooldown = Math.max(0, en.dmgCooldown - dt);
             const dx = player.x - en.x, dy = player.y - en.y;
             const len = Math.sqrt(dx*dx + dy*dy) || 1;
             const moveAngle = Math.atan2(dy, dx) + en.wanderAngle;
             en.x += Math.cos(moveAngle) * en.spd * dt;
             en.y += Math.sin(moveAngle) * en.spd * dt;
-            if (len < player.r + en.r + 2) {
-                player.hp = Math.max(0, player.hp - en.dmg * dt);
+            if (len < player.r + en.r + 2 && en.dmgCooldown <= 0) {
+                player.hp = Math.max(0, player.hp - en.dmg);
+                en.dmgCooldown = 0.8;
                 updateHUD();
                 if (player.hp <= 0) endGame(false);
             }
