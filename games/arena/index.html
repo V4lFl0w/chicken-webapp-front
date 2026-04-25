@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="cache-control" content="no-cache">
+    <title>Arena Strike — V-Hub</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        body { background:#000; overflow:hidden; touch-action:none; user-select:none; font-family:'Montserrat',sans-serif; }
+        canvas { display:block; position:absolute; inset:0; }
+
+        /* ── HUD ── */
+        #hud {
+            position:absolute; top:0; left:0; width:100%;
+            padding:12px 16px;
+            display:flex; justify-content:space-between; align-items:flex-start;
+            pointer-events:none; z-index:10;
+        }
+        .hud-col { display:flex; flex-direction:column; gap:6px; }
+        .hud-label { font-size:10px; font-weight:900; color:rgba(255,255,255,0.4); text-transform:uppercase; letter-spacing:1px; }
+        .hud-val   { font-size:18px; font-weight:900; color:#fff; line-height:1; }
+        #hpOuter { width:130px; height:7px; background:rgba(255,255,255,0.10); border-radius:4px; overflow:hidden; margin-top:4px; }
+        #hpInner { height:100%; width:100%; background:linear-gradient(90deg,#00f3ff,#00b8e6); border-radius:4px; transition:width 0.1s; }
+        .coins-hud { font-size:17px; font-weight:900; color:#ffcc44; display:flex; align-items:center; gap:5px; }
+
+        /* ── OVERLAYS ── */
+        .overlay {
+            position:absolute; inset:0; display:none; flex-direction:column;
+            align-items:center; justify-content:center;
+            background:rgba(4,7,18,0.93); backdrop-filter:blur(14px);
+            z-index:100; padding:24px;
+        }
+        .overlay.show { display:flex; }
+        .ov-title {
+            font-size:28px; font-weight:900; color:#fff; text-transform:uppercase;
+            text-shadow:0 0 24px rgba(0,243,255,0.7); margin-bottom:6px; text-align:center;
+        }
+        .ov-sub { font-size:13px; color:rgba(255,255,255,0.45); margin-bottom:28px; }
+
+        /* ── PERK SCREEN ── */
+        .perk-grid { display:flex; flex-direction:column; gap:12px; width:100%; max-width:310px; }
+        .perk-card {
+            background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.09);
+            border-radius:18px; padding:16px 18px;
+            display:flex; align-items:center; gap:14px;
+            cursor:pointer; transition:border-color 0.15s, background 0.15s;
+            -webkit-tap-highlight-color:transparent;
+        }
+        .perk-card:active { background:rgba(0,243,255,0.08); border-color:rgba(0,243,255,0.45); transform:scale(0.97); }
+        .perk-icon  { font-size:26px; flex-shrink:0; }
+        .perk-label { font-size:15px; font-weight:900; color:#fff; }
+        .perk-desc  { font-size:11px; color:rgba(255,255,255,0.4); margin-top:2px; }
+
+        /* ── END SCREEN ── */
+        .end-result { font-size:14px; color:rgba(255,255,255,0.55); margin-bottom:4px; }
+        .end-coins  { font-size:36px; font-weight:900; color:#ffcc44; margin:10px 0 28px; }
+        .hub-btn {
+            background:linear-gradient(135deg,#00f3ff,#0066ff); color:#071019;
+            border:none; border-radius:14px; padding:14px 36px;
+            font-size:15px; font-weight:900; cursor:pointer;
+            text-transform:uppercase; letter-spacing:0.5px;
+            box-shadow:0 8px 22px rgba(0,180,255,0.3);
+        }
+
+        /* ── WAVE ANNOUNCE ── */
+        #waveAnnounce {
+            position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+            font-size:46px; font-weight:900; color:#00f3ff;
+            text-shadow:0 0 30px rgba(0,243,255,0.9);
+            pointer-events:none; opacity:0;
+            transition:opacity 0.35s;
+            z-index:50; white-space:nowrap;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="hud">
+    <div class="hud-col">
+        <div>
+            <div class="hud-label">Волна</div>
+            <div class="hud-val" id="waveNum">1 / 3</div>
+        </div>
+        <div>
+            <div class="hud-label">HP</div>
+            <div id="hpOuter"><div id="hpInner"></div></div>
+        </div>
+    </div>
+    <div class="coins-hud">🪙 <span id="coinCount">0</span></div>
+</div>
+
+<div id="waveAnnounce"></div>
+
+<!-- Perk selection -->
+<div class="overlay" id="perkScreen">
+    <div class="ov-title">Выбери усиление</div>
+    <div class="ov-sub">После волны — одно улучшение</div>
+    <div class="perk-grid" id="perkGrid"></div>
+</div>
+
+<!-- Game over / Victory -->
+<div class="overlay" id="endScreen">
+    <div class="ov-title" id="endTitle">ИГРА ОКОНЧЕНА</div>
+    <div class="end-result">Волн пройдено: <span id="endWave">0</span></div>
+    <div class="end-coins">🪙 <span id="endCoins">0</span></div>
+    <button class="hub-btn" onclick="goHub()">◀ В Хаб</button>
+</div>
+
+<script>
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+    if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+    tg.setHeaderColor('#000');
+
+    const BACKEND_URL = 'https://coral-app-jxzy5.ondigitalocean.app/game-api';
+
+    // ── CANVAS ──
+    const canvas = document.getElementById('c');
+    const ctx    = canvas.getContext('2d');
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // ── WAVE DEFINITIONS ──
+    const WAVES = [
+        { count: 5,  hp: 30,  speed: 70,  dmg: 7,  r: 15 },
+        { count: 8,  hp: 65,  speed: 92,  dmg: 11, r: 15 },
+        { count: 12, hp: 110, speed: 115, dmg: 15, r: 15 },
+    ];
+
+    // ── PERK POOL ──
+    const PERK_POOL = [
+        { icon:'❤️',  label:'+20 Здоровья',       desc:'Макс. HP +20, лечение +20',      apply: p => { p.maxHP += 20; p.hp = Math.min(p.hp + 20, p.maxHP); } },
+        { icon:'⚡',  label:'Скорость атаки ×1.3', desc:'Перезарядка выстрела ×0.75',     apply: p => { p.atkCd = Math.max(0.12, p.atkCd * 0.75); } },
+        { icon:'🎯',  label:'+35 Радиус атаки',    desc:'Дальность поражения +35px',      apply: p => { p.atkR += 35; } },
+        { icon:'💨',  label:'Ускорение',            desc:'Скорость героя +35',             apply: p => { p.spd += 35; } },
+        { icon:'⚔️',  label:'+10 Урон',             desc:'Урон каждой пули +10',           apply: p => { p.dmg += 10; } },
+    ];
+
+    // ── GAME STATE ──
+    let gState   = 'playing'; // playing | waveclear | perk | over
+    let waveIdx  = 0;
+    let coins    = 0;
+
+    const player = { x:0, y:0, hp:80, maxHP:80, spd:160, atkR:120, atkCd:0.7, atkTimer:0, dmg:15, r:18 };
+
+    let enemies   = [];
+    let bullets   = [];
+    let particles = [];
+    let eid       = 0;
+
+    // ── JOYSTICK ──
+    const JOY = { on:false, cx:0, cy:0, dx:0, dy:0, mag:0 };
+    const JOY_MAX = 52, JOY_DEAD = 6;
+
+    canvas.addEventListener('pointerdown', e => {
+        if (gState !== 'playing') return;
+        if (e.clientX < canvas.width * 0.55) {
+            JOY.on = true; JOY.cx = e.clientX; JOY.cy = e.clientY;
+            JOY.dx = 0; JOY.dy = 0; JOY.mag = 0;
+            canvas.setPointerCapture(e.pointerId);
+        }
+    });
+    canvas.addEventListener('pointermove', e => {
+        if (!JOY.on) return;
+        const dx = e.clientX - JOY.cx, dy = e.clientY - JOY.cy;
+        JOY.mag = Math.sqrt(dx*dx + dy*dy);
+        const cl = Math.min(JOY.mag, JOY_MAX);
+        JOY.dx = JOY.mag > 0 ? dx/JOY.mag * cl : 0;
+        JOY.dy = JOY.mag > 0 ? dy/JOY.mag * cl : 0;
+    });
+    canvas.addEventListener('pointerup',     () => { JOY.on = false; JOY.dx = 0; JOY.dy = 0; JOY.mag = 0; });
+    canvas.addEventListener('pointercancel', () => { JOY.on = false; JOY.dx = 0; JOY.dy = 0; JOY.mag = 0; });
+
+    // ── SPAWN ──
+    function spawnWave(def) {
+        enemies = [];
+        for (let i = 0; i < def.count; i++) {
+            const side = Math.floor(Math.random() * 4);
+            const pad  = 50;
+            let x, y;
+            if      (side === 0) { x = Math.random() * canvas.width;  y = -pad; }
+            else if (side === 1) { x = canvas.width + pad;              y = Math.random() * canvas.height; }
+            else if (side === 2) { x = Math.random() * canvas.width;  y = canvas.height + pad; }
+            else                 { x = -pad;                            y = Math.random() * canvas.height; }
+            enemies.push({ x, y, hp: def.hp, maxHP: def.hp, spd: def.speed, dmg: def.dmg, r: def.r, id: eid++ });
+        }
+    }
+
+    // ── PARTICLES ──
+    function burst(x, y, color, n = 6) {
+        for (let i = 0; i < n; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const s = 55 + Math.random() * 110;
+            particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life:0.55 + Math.random()*0.2, maxLife:0.7, r:2 + Math.random()*3, color });
+        }
+    }
+
+    // ── HUD UPDATE ──
+    function updateHUD() {
+        document.getElementById('waveNum').textContent   = `${Math.min(waveIdx+1, WAVES.length)} / ${WAVES.length}`;
+        document.getElementById('coinCount').textContent = coins;
+        document.getElementById('hpInner').style.width   = Math.max(0, player.hp / player.maxHP * 100) + '%';
+    }
+
+    // ── ANNOUNCE ──
+    function announce(text) {
+        const el = document.getElementById('waveAnnounce');
+        el.textContent = text;
+        el.style.opacity = '1';
+        setTimeout(() => el.style.opacity = '0', 1400);
+    }
+
+    // ── PERKS ──
+    function showPerks() {
+        gState = 'perk';
+        const grid = document.getElementById('perkGrid');
+        grid.innerHTML = '';
+        const pool = [...PERK_POOL].sort(() => Math.random() - 0.5).slice(0, 3);
+        pool.forEach(perk => {
+            const div = document.createElement('div');
+            div.className = 'perk-card';
+            div.innerHTML = `<div class="perk-icon">${perk.icon}</div>
+                             <div><div class="perk-label">${perk.label}</div>
+                             <div class="perk-desc">${perk.desc}</div></div>`;
+            div.addEventListener('pointerdown', () => {
+                perk.apply(player);
+                document.getElementById('perkScreen').classList.remove('show');
+                nextWave();
+            });
+            grid.appendChild(div);
+        });
+        document.getElementById('perkScreen').classList.add('show');
+    }
+
+    function nextWave() {
+        waveIdx++;
+        if (waveIdx >= WAVES.length) { endGame(true); return; }
+        gState = 'playing';
+        bullets = [];
+        spawnWave(WAVES[waveIdx]);
+        updateHUD();
+        announce(`Волна ${waveIdx + 1}`);
+    }
+
+    // ── END GAME ──
+    function endGame(won) {
+        gState = 'over';
+        document.getElementById('endTitle').textContent = won ? 'ПОБЕДА!' : 'ИГРА ОКОНЧЕНА';
+        document.getElementById('endWave').textContent  = won ? WAVES.length : waveIdx + 1;
+        document.getElementById('endCoins').textContent = coins;
+        document.getElementById('endScreen').classList.add('show');
+        saveCoins();
+    }
+
+    async function saveCoins() {
+        try {
+            const u = tg.initDataUnsafe?.user;
+            if (!u?.id || coins === 0) return;
+            await fetch(`${BACKEND_URL}/save_score`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ telegram_id: u.id, username: u.username || u.first_name || 'Player', score: coins, coins })
+            });
+        } catch(e) {}
+    }
+
+    function goHub() { window.location.href = '../../index.html'; }
+
+    // ── START ──
+    function startGame() {
+        player.x = canvas.width / 2; player.y = canvas.height / 2;
+        player.hp = player.maxHP;
+        coins = 0; waveIdx = 0; gState = 'playing';
+        bullets = []; particles = [];
+        spawnWave(WAVES[0]);
+        updateHUD();
+        announce('Волна 1');
+    }
+
+    // ── UPDATE ──
+    function update(dt) {
+        // Player movement
+        const moving = JOY.mag > JOY_DEAD;
+        if (moving) {
+            const nx = JOY.dx / JOY_MAX, ny = JOY.dy / JOY_MAX;
+            player.x = Math.max(player.r, Math.min(canvas.width  - player.r, player.x + nx * player.spd * dt));
+            player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y + ny * player.spd * dt));
+        }
+
+        // Auto-attack (fires when joystick idle)
+        player.atkTimer -= dt;
+        if (!moving && player.atkTimer <= 0 && enemies.length > 0) {
+            let nearest = null, nearD = Infinity;
+            enemies.forEach(en => {
+                const dx = en.x - player.x, dy = en.y - player.y;
+                const d = Math.sqrt(dx*dx + dy*dy);
+                if (d < player.atkR && d < nearD) { nearest = en; nearD = d; }
+            });
+            if (nearest) {
+                const dx = nearest.x - player.x, dy = nearest.y - player.y;
+                const len = Math.sqrt(dx*dx + dy*dy) || 1;
+                bullets.push({ x: player.x, y: player.y, vx: dx/len * 430, vy: dy/len * 430, dmg: player.dmg, r: 5 });
+                player.atkTimer = player.atkCd;
+                burst(player.x, player.y, 'rgba(0,243,255,0.5)', 3);
+            }
+        }
+
+        // Bullets
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            b.x += b.vx * dt;
+            b.y += b.vy * dt;
+            if (b.x < -30 || b.x > canvas.width+30 || b.y < -30 || b.y > canvas.height+30) {
+                bullets.splice(i, 1); continue;
+            }
+            let hit = false;
+            for (let j = enemies.length - 1; j >= 0; j--) {
+                const en = enemies[j];
+                const dx = b.x - en.x, dy = b.y - en.y;
+                if (dx*dx + dy*dy < (b.r + en.r) ** 2) {
+                    en.hp -= b.dmg;
+                    burst(b.x, b.y, '#ffcc44', 4);
+                    bullets.splice(i, 1);
+                    hit = true;
+                    if (en.hp <= 0) {
+                        burst(en.x, en.y, '#ff4466', 9);
+                        enemies.splice(j, 1);
+                        coins += 5;
+                        updateHUD();
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Enemies — move toward player + contact damage
+        enemies.forEach(en => {
+            const dx = player.x - en.x, dy = player.y - en.y;
+            const len = Math.sqrt(dx*dx + dy*dy) || 1;
+            en.x += (dx / len) * en.spd * dt;
+            en.y += (dy / len) * en.spd * dt;
+            if (len < player.r + en.r + 2) {
+                player.hp = Math.max(0, player.hp - en.dmg * dt);
+                updateHUD();
+                if (player.hp <= 0) endGame(false);
+            }
+        });
+
+        // Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.life -= dt;
+            if (p.life <= 0) { particles.splice(i, 1); continue; }
+            p.x += p.vx * dt; p.y += p.vy * dt;
+            p.vx *= 0.90; p.vy *= 0.90;
+        }
+
+        // Wave clear check
+        if (gState === 'playing' && enemies.length === 0) {
+            gState = 'waveclear';
+            coins += 25;
+            updateHUD();
+            announce('Волна пройдена!');
+            setTimeout(showPerks, 1000);
+        }
+    }
+
+    // ── RENDER ──
+    function render() {
+        const W = canvas.width, H = canvas.height;
+
+        // Background
+        const bg = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, Math.max(W,H)*0.7);
+        bg.addColorStop(0, '#0b0e1c');
+        bg.addColorStop(1, '#050710');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+
+        // Subtle grid
+        ctx.strokeStyle = 'rgba(0,243,255,0.025)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < W; x += 48) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+        for (let y = 0; y < H; y += 48) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+        // Attack radius (when idle)
+        if (!JOY.on || JOY.mag <= JOY_DEAD) {
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.atkR, 0, Math.PI*2);
+            ctx.strokeStyle = 'rgba(0,243,255,0.09)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        // Particles
+        particles.forEach(p => {
+            ctx.globalAlpha = p.life / p.maxLife;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+            ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+
+        // Bullets
+        bullets.forEach(b => {
+            ctx.shadowColor = '#ffcc44'; ctx.shadowBlur = 12;
+            ctx.fillStyle = '#ffe566';
+            ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill();
+        });
+        ctx.shadowBlur = 0;
+
+        // Enemies
+        enemies.forEach(en => {
+            // Glow
+            ctx.shadowColor = '#ff2244'; ctx.shadowBlur = 10;
+            ctx.fillStyle = '#c01835';
+            ctx.beginPath(); ctx.arc(en.x, en.y, en.r, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+            // Spike detail
+            ctx.strokeStyle = '#ff4466'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(en.x, en.y, en.r, 0, Math.PI*2); ctx.stroke();
+            // HP bar
+            const bw = en.r * 2.2, bx = en.x - bw/2, by = en.y - en.r - 9;
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.fillRect(bx, by, bw, 4);
+            ctx.fillStyle = en.hp / en.maxHP > 0.4 ? '#37d67a' : '#ff5b77';
+            ctx.fillRect(bx, by, bw * (en.hp / en.maxHP), 4);
+        });
+
+        // Player body
+        ctx.shadowColor = '#00f3ff'; ctx.shadowBlur = 22;
+        ctx.fillStyle = '#00394d';
+        ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#00f3ff'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI*2); ctx.stroke();
+        ctx.shadowBlur = 0;
+        // Player icon
+        ctx.font = `${player.r - 2}px sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff';
+        ctx.fillText('⚡', player.x, player.y);
+
+        // Joystick
+        if (JOY.on) {
+            ctx.globalAlpha = 0.22;
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(JOY.cx, JOY.cy, JOY_MAX, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 0.6;
+            ctx.fillStyle = '#00f3ff';
+            ctx.beginPath(); ctx.arc(JOY.cx + JOY.dx, JOY.cy + JOY.dy, 24, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // ── LOOP ──
+    let last = 0;
+    function loop(ts) {
+        const dt = Math.min((ts - last) / 1000, 0.05);
+        last = ts;
+        if (gState === 'playing') update(dt);
+        render();
+        requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(ts => { last = ts; requestAnimationFrame(loop); });
+    startGame();
+</script>
+</body>
+</html>
