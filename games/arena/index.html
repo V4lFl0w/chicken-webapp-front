@@ -113,7 +113,10 @@
             text-shadow:0 0 30px rgba(0,243,255,0.9);
             pointer-events:none; opacity:0;
             transition:opacity 0.35s;
-            z-index:50; white-space:nowrap;
+            z-index:50; white-space:normal;
+            max-width:85vw; overflow:hidden;
+            word-break:break-word; padding:0 20px;
+            text-align:center;
         }
     </style>
 </head>
@@ -146,7 +149,7 @@
 
 <!-- Hero select (shown on load) -->
 <div class="overlay show" id="heroSelectScreen">
-    <img src="../../assets/mascot_vol.jpeg" alt="Volt">
+    <img src="../../frontend/assets/mascot_vol.jpeg" alt="Volt">
     <div class="hero-card">
         <div class="hero-name">VOLT</div>
         <div class="hero-sub">Мастер молний. Атакует автоматически.</div>
@@ -252,8 +255,8 @@
         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         else if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
         if (gState !== 'playing') return;
-        // Activate joystick anywhere in left half
-        if (e.clientX < canvas.width * 0.5 && joyPointerId === null) {
+        // Joystick activates from any touch point on screen
+        if (joyPointerId === null) {
             joyPointerId = e.pointerId;
             JOY.on = true; JOY.cx = e.clientX; JOY.cy = e.clientY;
             JOY.dx = 0; JOY.dy = 0; JOY.mag = 0;
