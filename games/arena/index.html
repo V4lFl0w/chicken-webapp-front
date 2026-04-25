@@ -109,14 +109,33 @@
         /* ── WAVE ANNOUNCE ── */
         #waveAnnounce {
             position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-            font-size:46px; font-weight:900; color:#00f3ff;
+            font-size:clamp(28px,7vw,42px); font-weight:900; color:#00f3ff;
             text-shadow:0 0 30px rgba(0,243,255,0.9);
             pointer-events:none; opacity:0;
             transition:opacity 0.35s;
-            z-index:50; white-space:normal;
+            z-index:50; white-space:nowrap;
             max-width:85vw; overflow:hidden;
-            word-break:break-word; padding:0 20px;
             text-align:center;
+        }
+
+        /* ── BOLT BUTTON ── */
+        #boltWrap {
+            position:absolute; right:20px; bottom:90px; z-index:20;
+            width:60px; height:60px;
+        }
+        #boltBtn {
+            width:60px; height:60px; border-radius:50%;
+            border:2.5px solid #00f3ff;
+            background:rgba(0,243,255,0.12);
+            color:#00f3ff; font-size:26px;
+            cursor:pointer; display:flex; align-items:center; justify-content:center;
+            transition:opacity 0.2s, background 0.2s;
+            -webkit-tap-highlight-color:transparent;
+        }
+        #boltBtn.cooldown { opacity:0.45; background:rgba(0,243,255,0.04); }
+        #boltArc {
+            position:absolute; top:-5px; left:-5px;
+            pointer-events:none; z-index:2;
         }
     </style>
 </head>
@@ -149,7 +168,7 @@
 
 <!-- Hero select (shown on load) -->
 <div class="overlay show" id="heroSelectScreen">
-    <img src="../../frontend/assets/mascot_vol.jpeg" alt="Volt">
+    <img src="https://coral-app-jxzy5.ondigitalocean.app/game/frontend/assets/mascot_vol.jpeg" alt="Volt">
     <div class="hero-card">
         <div class="hero-name">VOLT</div>
         <div class="hero-sub">Мастер молний. Атакует автоматически.</div>
@@ -162,7 +181,16 @@
     <div class="ov-title" id="endTitle">ИГРА ОКОНЧЕНА</div>
     <div class="end-result">Волн пройдено: <span id="endWave">0</span></div>
     <div class="end-coins">🪙 <span id="endCoins">0</span></div>
-    <button class="hub-btn" onclick="goHub()">◀ В Хаб</button>
+    <div id="endActions" style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px;opacity:0;pointer-events:none;transition:opacity 0.4s;">
+        <button class="hub-btn" onclick="restartGame()">Играть снова ↺</button>
+        <button class="hub-btn" style="background:rgba(255,255,255,0.08);box-shadow:none;" onclick="goHub()">◀ В Хаб</button>
+    </div>
+</div>
+
+<!-- Lightning bolt ability -->
+<div id="boltWrap">
+    <canvas id="boltArc" width="70" height="70"></canvas>
+    <button id="boltBtn" onclick="fireBolt()">⚡</button>
 </div>
 
 <script>
@@ -210,6 +238,73 @@
             g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.05);
             osc.start(); osc.stop(ac.currentTime + 0.05);
         } catch(e) {}
+    }
+
+    // ── VOLT SPRITE ──
+    const voltImg = new Image();
+    voltImg.src = 'https://coral-app-jxzy5.ondigitalocean.app/game/frontend/assets/mascot_vol.jpeg';
+
+    // ── BOLT ABILITY ──
+    const BOLT_CD_MAX = 5;
+    let boltCd = 0;
+    const _boltArcEl  = document.getElementById('boltArc');
+    const _boltArcCtx = _boltArcEl ? _boltArcEl.getContext('2d') : null;
+
+    function playBolt() {
+        try {
+            const ac = getAC();
+            // White-noise thunder burst
+            const frames = Math.floor(ac.sampleRate * 0.35);
+            const buf = ac.createBuffer(1, frames, ac.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < frames; i++) d[i] = (Math.random()*2-1) * Math.exp(-i/(ac.sampleRate*0.08));
+            const src = ac.createBufferSource();
+            const filt = ac.createBiquadFilter(); filt.type='bandpass'; filt.frequency.value=350;
+            const g = ac.createGain();
+            src.buffer = buf;
+            src.connect(filt); filt.connect(g); g.connect(ac.destination);
+            g.gain.setValueAtTime(0.55, ac.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.35);
+            src.start();
+        } catch(e) {}
+    }
+
+    function drawBoltArc() {
+        if (!_boltArcCtx) return;
+        const c = _boltArcEl, cx = 35, cy = 35, r = 30;
+        _boltArcCtx.clearRect(0, 0, 70, 70);
+        if (boltCd <= 0) return;
+        const progress = 1 - boltCd / BOLT_CD_MAX;
+        // background ring
+        _boltArcCtx.beginPath();
+        _boltArcCtx.arc(cx, cy, r, 0, Math.PI*2);
+        _boltArcCtx.strokeStyle = 'rgba(0,243,255,0.18)';
+        _boltArcCtx.lineWidth = 3;
+        _boltArcCtx.stroke();
+        // progress arc
+        _boltArcCtx.beginPath();
+        _boltArcCtx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + progress * Math.PI*2);
+        _boltArcCtx.strokeStyle = '#00f3ff';
+        _boltArcCtx.lineWidth = 3;
+        _boltArcCtx.stroke();
+    }
+
+    function fireBolt() {
+        if (boltCd > 0 || enemies.length === 0 || gState !== 'playing') return;
+        let nearest = null, nearD = Infinity;
+        enemies.forEach(en => {
+            const dx = en.x - player.x, dy = en.y - player.y;
+            const d = Math.sqrt(dx*dx + dy*dy);
+            if (d < nearD) { nearest = en; nearD = d; }
+        });
+        if (!nearest) return;
+        const dx = nearest.x - player.x, dy = nearest.y - player.y;
+        const len = Math.sqrt(dx*dx + dy*dy) || 1;
+        bullets.push({ x: player.x, y: player.y, vx: dx/len*600, vy: dy/len*600, dmg: player.dmg*3, r: 15, isBolt: true });
+        boltCd = BOLT_CD_MAX;
+        const btn = document.getElementById('boltBtn');
+        if (btn) btn.classList.add('cooldown');
+        playBolt();
     }
 
     // ── WAVE DEFINITIONS ──
@@ -370,7 +465,21 @@
         document.getElementById('endWave').textContent  = won ? WAVES.length : waveIdx + 1;
         document.getElementById('endCoins').textContent = coins;
         document.getElementById('endScreen').classList.add('show');
+        // Buttons appear after 3s so player sees the result first
+        const actions = document.getElementById('endActions');
+        actions.style.opacity = '0'; actions.style.pointerEvents = 'none';
+        setTimeout(() => { actions.style.opacity = '1'; actions.style.pointerEvents = ''; }, 3000);
         saveCoins();
+    }
+
+    function restartGame() {
+        document.getElementById('endScreen').classList.remove('show');
+        Object.assign(player, { hp:80, maxHP:80, spd:160, atkR:120, atkCd:0.7, atkTimer:0, dmg:15 });
+        boltCd = 0;
+        const btn = document.getElementById('boltBtn');
+        if (btn) btn.classList.remove('cooldown');
+        drawBoltArc();
+        startGame();
     }
 
     async function saveCoins() {
@@ -417,6 +526,16 @@
             if (shakeTimer <= 0) { shakeX = 0; shakeY = 0; }
         }
 
+        // Bolt cooldown
+        if (boltCd > 0) {
+            boltCd = Math.max(0, boltCd - dt);
+            drawBoltArc();
+            if (boltCd === 0) {
+                const btn = document.getElementById('boltBtn');
+                if (btn) btn.classList.remove('cooldown');
+            }
+        }
+
         // Player movement
         const moving = JOY.mag > JOY_DEAD;
         if (moving) {
@@ -457,18 +576,42 @@
                 const en = enemies[j];
                 const dx = b.x - en.x, dy = b.y - en.y;
                 if (dx*dx + dy*dy < (b.r + en.r) ** 2) {
-                    en.hp -= b.dmg;
-                    en.hitFlash = 1;
-                    dmgNums.push({ x: en.x + (Math.random()-0.5)*14, y: en.y - en.r - 8, text: String(b.dmg), life: 0.8, maxLife: 0.8 });
-                    burst(b.x, b.y, '#ffcc44', 4);
-                    playHit();
-                    bullets.splice(i, 1);
-                    if (en.hp <= 0) {
-                        deathBurst(en.x, en.y);
-                        triggerShake(3, 0.2);
-                        enemies.splice(j, 1);
-                        coins += 5;
-                        updateHUD();
+                    if (b.isBolt) {
+                        // AOE explosion — damage all enemies within 60px
+                        burst(b.x, b.y, '#00f3ff', 14);
+                        triggerShake(5, 0.3);
+                        playHit();
+                        bullets.splice(i, 1);
+                        for (let k = enemies.length - 1; k >= 0; k--) {
+                            const ae = enemies[k];
+                            const ax = b.x - ae.x, ay = b.y - ae.y;
+                            if (ax*ax + ay*ay < 60*60) {
+                                ae.hp -= b.dmg;
+                                ae.hitFlash = 1;
+                                dmgNums.push({ x: ae.x + (Math.random()-0.5)*14, y: ae.y - ae.r - 8, text: String(b.dmg), life: 0.8, maxLife: 0.8 });
+                                if (ae.hp <= 0) {
+                                    deathBurst(ae.x, ae.y);
+                                    triggerShake(3, 0.2);
+                                    enemies.splice(k, 1);
+                                    coins += 5;
+                                    updateHUD();
+                                }
+                            }
+                        }
+                    } else {
+                        en.hp -= b.dmg;
+                        en.hitFlash = 1;
+                        dmgNums.push({ x: en.x + (Math.random()-0.5)*14, y: en.y - en.r - 8, text: String(b.dmg), life: 0.8, maxLife: 0.8 });
+                        burst(b.x, b.y, '#ffcc44', 4);
+                        playHit();
+                        bullets.splice(i, 1);
+                        if (en.hp <= 0) {
+                            deathBurst(en.x, en.y);
+                            triggerShake(3, 0.2);
+                            enemies.splice(j, 1);
+                            coins += 5;
+                            updateHUD();
+                        }
                     }
                     break;
                 }
@@ -565,8 +708,13 @@
 
         // Bullets
         bullets.forEach(b => {
-            ctx.shadowColor = '#ffcc44'; ctx.shadowBlur = 12;
-            ctx.fillStyle = '#ffe566';
+            if (b.isBolt) {
+                ctx.shadowColor = '#00f3ff'; ctx.shadowBlur = 22;
+                ctx.fillStyle = '#00f3ff';
+            } else {
+                ctx.shadowColor = '#ffcc44'; ctx.shadowBlur = 12;
+                ctx.fillStyle = '#ffe566';
+            }
             ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill();
         });
         ctx.shadowBlur = 0;
@@ -596,18 +744,22 @@
             ctx.fillRect(bx, by, bw * (en.hp / en.maxHP), 4);
         });
 
-        // Player body
-        ctx.shadowColor = '#00f3ff'; ctx.shadowBlur = 22;
-        ctx.fillStyle = '#00394d';
-        ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = '#00f3ff'; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI*2); ctx.stroke();
+        // Player sprite (60×60 clipped circle, fallback to filled arc)
+        const sz = 60;
+        ctx.save();
+        ctx.shadowColor = '#00f3ff'; ctx.shadowBlur = 20;
+        ctx.beginPath(); ctx.arc(player.x, player.y, sz/2, 0, Math.PI*2);
+        if (voltImg.complete && voltImg.naturalWidth > 0) {
+            ctx.clip();
+            ctx.drawImage(voltImg, player.x - sz/2, player.y - sz/2, sz, sz);
+        } else {
+            ctx.fillStyle = '#00394d'; ctx.fill();
+        }
+        ctx.restore();
         ctx.shadowBlur = 0;
-        // Player icon
-        ctx.font = `${player.r - 2}px sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#fff';
-        ctx.fillText('⚡', player.x, player.y);
+        // Cyan ring around sprite
+        ctx.strokeStyle = '#00f3ff'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(player.x, player.y, sz/2, 0, Math.PI*2); ctx.stroke();
 
         // Damage numbers
         ctx.font = 'bold 15px Montserrat, sans-serif';
