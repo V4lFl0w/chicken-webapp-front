@@ -126,6 +126,38 @@
     resize();
     window.addEventListener('resize', resize);
 
+    // ── WEB AUDIO ──
+    let audioCtx = null;
+    function getAC() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        return audioCtx;
+    }
+    function playShoot() {
+        try {
+            const ac = getAC();
+            const osc = ac.createOscillator(), g = ac.createGain();
+            osc.connect(g); g.connect(ac.destination);
+            osc.frequency.setValueAtTime(900, ac.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(180, ac.currentTime + 0.07);
+            g.gain.setValueAtTime(0.1, ac.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.07);
+            osc.start(); osc.stop(ac.currentTime + 0.07);
+        } catch(e) {}
+    }
+    function playHit() {
+        try {
+            const ac = getAC();
+            const osc = ac.createOscillator(), g = ac.createGain();
+            osc.type = 'square';
+            osc.connect(g); g.connect(ac.destination);
+            osc.frequency.setValueAtTime(280, ac.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(70, ac.currentTime + 0.05);
+            g.gain.setValueAtTime(0.15, ac.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.05);
+            osc.start(); osc.stop(ac.currentTime + 0.05);
+        } catch(e) {}
+    }
+
     // ── WAVE DEFINITIONS ──
     const WAVES = [
         { count: 5,  hp: 30,  speed: 70,  dmg: 7,  r: 15 },
@@ -152,30 +184,47 @@
     let enemies   = [];
     let bullets   = [];
     let particles = [];
+    let dmgNums   = [];
     let eid       = 0;
+
+    // ── SCREEN SHAKE ──
+    let shakeX = 0, shakeY = 0, shakeMag = 0, shakeTimer = 0;
+    function triggerShake(mag, dur) { shakeMag = mag; shakeTimer = dur; }
 
     // ── JOYSTICK ──
     const JOY = { on:false, cx:0, cy:0, dx:0, dy:0, mag:0 };
     const JOY_MAX = 52, JOY_DEAD = 6;
+    let joyPointerId = null;
 
     canvas.addEventListener('pointerdown', e => {
+        // Unlock AudioContext on first user gesture
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        else if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
         if (gState !== 'playing') return;
-        if (e.clientX < canvas.width * 0.55) {
+        // Activate joystick anywhere in left half
+        if (e.clientX < canvas.width * 0.5 && joyPointerId === null) {
+            joyPointerId = e.pointerId;
             JOY.on = true; JOY.cx = e.clientX; JOY.cy = e.clientY;
             JOY.dx = 0; JOY.dy = 0; JOY.mag = 0;
             canvas.setPointerCapture(e.pointerId);
         }
     });
     canvas.addEventListener('pointermove', e => {
-        if (!JOY.on) return;
+        if (!JOY.on || e.pointerId !== joyPointerId) return;
         const dx = e.clientX - JOY.cx, dy = e.clientY - JOY.cy;
         JOY.mag = Math.sqrt(dx*dx + dy*dy);
         const cl = Math.min(JOY.mag, JOY_MAX);
         JOY.dx = JOY.mag > 0 ? dx/JOY.mag * cl : 0;
         JOY.dy = JOY.mag > 0 ? dy/JOY.mag * cl : 0;
     });
-    canvas.addEventListener('pointerup',     () => { JOY.on = false; JOY.dx = 0; JOY.dy = 0; JOY.mag = 0; });
-    canvas.addEventListener('pointercancel', () => { JOY.on = false; JOY.dx = 0; JOY.dy = 0; JOY.mag = 0; });
+    function releaseJoy(e) {
+        if (e.pointerId !== joyPointerId) return;
+        joyPointerId = null;
+        JOY.on = false; JOY.dx = 0; JOY.dy = 0; JOY.mag = 0;
+        player.atkTimer = 0; // fire immediately on stop
+    }
+    canvas.addEventListener('pointerup',     releaseJoy);
+    canvas.addEventListener('pointercancel', releaseJoy);
 
     // ── SPAWN ──
     function spawnWave(def) {
@@ -188,7 +237,12 @@
             else if (side === 1) { x = canvas.width + pad;              y = Math.random() * canvas.height; }
             else if (side === 2) { x = Math.random() * canvas.width;  y = canvas.height + pad; }
             else                 { x = -pad;                            y = Math.random() * canvas.height; }
-            enemies.push({ x, y, hp: def.hp, maxHP: def.hp, spd: def.speed, dmg: def.dmg, r: def.r, id: eid++ });
+            enemies.push({
+                x, y,
+                hp: def.hp, maxHP: def.hp, spd: def.speed, dmg: def.dmg, r: def.r, id: eid++,
+                wanderAngle: 0, wanderTimer: Math.random() * 0.5, // wander: ±30° offset
+                hitFlash: 0
+            });
         }
     }
 
@@ -198,6 +252,13 @@
             const a = Math.random() * Math.PI * 2;
             const s = 55 + Math.random() * 110;
             particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life:0.55 + Math.random()*0.2, maxLife:0.7, r:2 + Math.random()*3, color });
+        }
+    }
+    function deathBurst(x, y) {
+        for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * Math.PI * 2 + Math.random() * 0.5;
+            const s = 90 + Math.random() * 130;
+            particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 0.6 + Math.random()*0.3, maxLife: 0.9, r: 3 + Math.random()*5, color: '#ff4466' });
         }
     }
 
@@ -242,7 +303,7 @@
         waveIdx++;
         if (waveIdx >= WAVES.length) { endGame(true); return; }
         gState = 'playing';
-        bullets = [];
+        bullets = []; dmgNums = [];
         spawnWave(WAVES[waveIdx]);
         updateHUD();
         announce(`Волна ${waveIdx + 1}`);
@@ -277,7 +338,7 @@
         player.x = canvas.width / 2; player.y = canvas.height / 2;
         player.hp = player.maxHP;
         coins = 0; waveIdx = 0; gState = 'playing';
-        bullets = []; particles = [];
+        bullets = []; particles = []; dmgNums = [];
         spawnWave(WAVES[0]);
         updateHUD();
         announce('Волна 1');
@@ -285,6 +346,14 @@
 
     // ── UPDATE ──
     function update(dt) {
+        // Screen shake
+        if (shakeTimer > 0) {
+            shakeTimer -= dt;
+            shakeX = (Math.random() - 0.5) * 2 * shakeMag;
+            shakeY = (Math.random() - 0.5) * 2 * shakeMag;
+            if (shakeTimer <= 0) { shakeX = 0; shakeY = 0; }
+        }
+
         // Player movement
         const moving = JOY.mag > JOY_DEAD;
         if (moving) {
@@ -293,7 +362,7 @@
             player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y + ny * player.spd * dt));
         }
 
-        // Auto-attack (fires when joystick idle)
+        // Auto-attack: only when standing still (Archero style)
         player.atkTimer -= dt;
         if (!moving && player.atkTimer <= 0 && enemies.length > 0) {
             let nearest = null, nearD = Infinity;
@@ -308,6 +377,7 @@
                 bullets.push({ x: player.x, y: player.y, vx: dx/len * 430, vy: dy/len * 430, dmg: player.dmg, r: 5 });
                 player.atkTimer = player.atkCd;
                 burst(player.x, player.y, 'rgba(0,243,255,0.5)', 3);
+                playShoot();
             }
         }
 
@@ -319,17 +389,19 @@
             if (b.x < -30 || b.x > canvas.width+30 || b.y < -30 || b.y > canvas.height+30) {
                 bullets.splice(i, 1); continue;
             }
-            let hit = false;
             for (let j = enemies.length - 1; j >= 0; j--) {
                 const en = enemies[j];
                 const dx = b.x - en.x, dy = b.y - en.y;
                 if (dx*dx + dy*dy < (b.r + en.r) ** 2) {
                     en.hp -= b.dmg;
+                    en.hitFlash = 1;
+                    dmgNums.push({ x: en.x + (Math.random()-0.5)*14, y: en.y - en.r - 8, text: String(b.dmg), life: 0.8, maxLife: 0.8 });
                     burst(b.x, b.y, '#ffcc44', 4);
+                    playHit();
                     bullets.splice(i, 1);
-                    hit = true;
                     if (en.hp <= 0) {
-                        burst(en.x, en.y, '#ff4466', 9);
+                        deathBurst(en.x, en.y);
+                        triggerShake(3, 0.2);
                         enemies.splice(j, 1);
                         coins += 5;
                         updateHUD();
@@ -339,12 +411,19 @@
             }
         }
 
-        // Enemies — move toward player + contact damage
+        // Enemies — wander toward player with ±30° random deviation
         enemies.forEach(en => {
+            en.wanderTimer -= dt;
+            if (en.wanderTimer <= 0) {
+                en.wanderAngle = (Math.random() - 0.5) * (Math.PI / 3); // ±30°
+                en.wanderTimer = 0.5;
+            }
+            en.hitFlash = Math.max(0, en.hitFlash - dt * 25);
             const dx = player.x - en.x, dy = player.y - en.y;
             const len = Math.sqrt(dx*dx + dy*dy) || 1;
-            en.x += (dx / len) * en.spd * dt;
-            en.y += (dy / len) * en.spd * dt;
+            const moveAngle = Math.atan2(dy, dx) + en.wanderAngle;
+            en.x += Math.cos(moveAngle) * en.spd * dt;
+            en.y += Math.sin(moveAngle) * en.spd * dt;
             if (len < player.r + en.r + 2) {
                 player.hp = Math.max(0, player.hp - en.dmg * dt);
                 updateHUD();
@@ -361,6 +440,14 @@
             p.vx *= 0.90; p.vy *= 0.90;
         }
 
+        // Damage numbers float up
+        for (let i = dmgNums.length - 1; i >= 0; i--) {
+            const d = dmgNums[i];
+            d.life -= dt;
+            if (d.life <= 0) { dmgNums.splice(i, 1); continue; }
+            d.y -= 45 * dt;
+        }
+
         // Wave clear check
         if (gState === 'playing' && enemies.length === 0) {
             gState = 'waveclear';
@@ -375,12 +462,15 @@
     function render() {
         const W = canvas.width, H = canvas.height;
 
-        // Background
+        ctx.save();
+        ctx.translate(shakeX, shakeY);
+
+        // Background (slightly oversized to hide shake edges)
         const bg = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, Math.max(W,H)*0.7);
         bg.addColorStop(0, '#0b0e1c');
         bg.addColorStop(1, '#050710');
         ctx.fillStyle = bg;
-        ctx.fillRect(0, 0, W, H);
+        ctx.fillRect(-6, -6, W+12, H+12);
 
         // Subtle grid
         ctx.strokeStyle = 'rgba(0,243,255,0.025)';
@@ -417,12 +507,19 @@
 
         // Enemies
         enemies.forEach(en => {
-            // Glow
+            // Hit flash overlay (before body so it blends under the glow)
+            if (en.hitFlash > 0) {
+                ctx.globalAlpha = en.hitFlash * 0.85;
+                ctx.fillStyle = '#ff8888';
+                ctx.beginPath(); ctx.arc(en.x, en.y, en.r + 2, 0, Math.PI*2); ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+            // Body glow
             ctx.shadowColor = '#ff2244'; ctx.shadowBlur = 10;
             ctx.fillStyle = '#c01835';
             ctx.beginPath(); ctx.arc(en.x, en.y, en.r, 0, Math.PI*2); ctx.fill();
             ctx.shadowBlur = 0;
-            // Spike detail
+            // Outline
             ctx.strokeStyle = '#ff4466'; ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.arc(en.x, en.y, en.r, 0, Math.PI*2); ctx.stroke();
             // HP bar
@@ -446,6 +543,16 @@
         ctx.fillStyle = '#fff';
         ctx.fillText('⚡', player.x, player.y);
 
+        // Damage numbers
+        ctx.font = 'bold 15px Montserrat, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        dmgNums.forEach(d => {
+            ctx.globalAlpha = d.life / d.maxLife;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(d.text, d.x, d.y);
+        });
+        ctx.globalAlpha = 1;
+
         // Joystick
         if (JOY.on) {
             ctx.globalAlpha = 0.22;
@@ -456,6 +563,8 @@
             ctx.beginPath(); ctx.arc(JOY.cx + JOY.dx, JOY.cy + JOY.dy, 24, 0, Math.PI*2); ctx.fill();
             ctx.globalAlpha = 1;
         }
+
+        ctx.restore();
     }
 
     // ── LOOP ──
