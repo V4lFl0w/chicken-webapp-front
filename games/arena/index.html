@@ -65,6 +65,47 @@
             box-shadow:0 8px 22px rgba(0,180,255,0.3);
         }
 
+        /* ── HERO SELECT ── */
+        #heroSelectScreen {
+            background: rgba(4,7,18,0.97);
+            backdrop-filter: blur(18px);
+            justify-content: flex-end;
+            padding-bottom: 32px;
+        }
+        #heroSelectScreen img {
+            height: 50vh;
+            object-fit: contain;
+            display: block;
+            flex: 1;
+            min-height: 0;
+            pointer-events: none;
+            user-select: none;
+        }
+        .hero-card {
+            width: calc(100% - 36px);
+            max-width: 320px;
+            background: linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02));
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 22px;
+            padding: 20px 22px 24px;
+            text-align: center;
+            box-shadow: 0 24px 48px rgba(0,0,0,0.5);
+        }
+        .hero-name {
+            font-size: 34px;
+            font-weight: 900;
+            color: #00f3ff;
+            text-shadow: 0 0 28px rgba(0,243,255,0.65);
+            letter-spacing: 3px;
+            margin-bottom: 6px;
+        }
+        .hero-sub {
+            font-size: 13px;
+            color: rgba(255,255,255,0.45);
+            margin-bottom: 22px;
+            line-height: 1.5;
+        }
+
         /* ── WAVE ANNOUNCE ── */
         #waveAnnounce {
             position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
@@ -101,6 +142,16 @@
     <div class="ov-title">Выбери усиление</div>
     <div class="ov-sub">После волны — одно улучшение</div>
     <div class="perk-grid" id="perkGrid"></div>
+</div>
+
+<!-- Hero select (shown on load) -->
+<div class="overlay show" id="heroSelectScreen">
+    <img src="../../frontend/assets/mascot_vol.jpeg" alt="Volt">
+    <div class="hero-card">
+        <div class="hero-name">VOLT</div>
+        <div class="hero-sub">Мастер молний. Атакует автоматически.</div>
+        <button class="hub-btn" onclick="beginGame()">Играть за Volt ⚡</button>
+    </div>
 </div>
 
 <!-- Game over / Victory -->
@@ -175,7 +226,7 @@
     ];
 
     // ── GAME STATE ──
-    let gState   = 'playing'; // playing | waveclear | perk | over
+    let gState   = 'intro'; // intro | playing | waveclear | perk | over
     let waveIdx  = 0;
     let coins    = 0;
 
@@ -332,6 +383,15 @@
     }
 
     function goHub() { window.location.href = '../../index.html'; }
+
+    // ── HERO SELECT ──
+    function beginGame() {
+        const el = document.getElementById('heroSelectScreen');
+        el.style.transition = 'opacity 0.3s';
+        el.style.opacity = '0';
+        setTimeout(() => el.classList.remove('show'), 320);
+        startGame();
+    }
 
     // ── START ──
     function startGame() {
@@ -581,7 +641,6 @@
     }
 
     requestAnimationFrame(ts => { last = ts; requestAnimationFrame(loop); });
-    startGame();
 </script>
 </body>
 </html>
