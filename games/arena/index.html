@@ -8,8 +8,8 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap" rel="stylesheet">
     <style>
-        * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-        body { background:#000; overflow:hidden; touch-action:none; user-select:none; font-family:'Montserrat',sans-serif; }
+        * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+        body { background:#000; overflow:hidden; touch-action:none; font-family:'Montserrat',sans-serif; }
         canvas { display:block; position:absolute; inset:0; }
 
         /* ── HUD ── */
@@ -79,7 +79,6 @@
             flex: 1;
             min-height: 0;
             pointer-events: none;
-            user-select: none;
         }
         .hero-card {
             width: calc(100% - 36px);
@@ -183,14 +182,14 @@
     <div class="end-coins">🪙 <span id="endCoins">0</span></div>
     <div id="endActions" style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px;opacity:0;pointer-events:none;transition:opacity 0.4s;">
         <button class="hub-btn" onclick="restartGame()">Играть снова ↺</button>
-        <button class="hub-btn" style="background:rgba(255,255,255,0.08);box-shadow:none;" onclick="goHub()">◀ В Хаб</button>
+        <button class="hub-btn" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:#fff;box-shadow:none;" onclick="goHub()">◀ В Хаб</button>
     </div>
 </div>
 
 <!-- Lightning bolt ability -->
 <div id="boltWrap">
     <canvas id="boltArc" width="70" height="70"></canvas>
-    <button id="boltBtn" onclick="fireBolt()">⚡</button>
+    <button id="boltBtn">⚡</button>
 </div>
 
 <script>
@@ -204,7 +203,23 @@
     // ── CANVAS ──
     const canvas = document.getElementById('c');
     const ctx    = canvas.getContext('2d');
-    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+
+    let treePositions = [];
+    function computeTrees() {
+        const W = canvas.width, H = canvas.height;
+        treePositions = [];
+        const margin = 30, count = 14;
+        for (let i = 0; i < count; i++) {
+            const t = i / count;
+            let x, y;
+            if      (t < 0.25) { x = margin + (t / 0.25) * (W - margin * 2); y = margin; }
+            else if (t < 0.5)  { x = W - margin; y = margin + ((t - 0.25) / 0.25) * (H - margin * 2); }
+            else if (t < 0.75) { x = W - margin - ((t - 0.5) / 0.25) * (W - margin * 2); y = H - margin; }
+            else               { x = margin; y = H - margin - ((t - 0.75) / 0.25) * (H - margin * 2); }
+            treePositions.push({ x, y, r: 16 + Math.sin(i * 37.3) * 5 });
+        }
+    }
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; computeTrees(); }
     resize();
     window.addEventListener('resize', resize);
 
@@ -253,7 +268,6 @@
     function playBolt() {
         try {
             const ac = getAC();
-            // White-noise thunder burst
             const frames = Math.floor(ac.sampleRate * 0.35);
             const buf = ac.createBuffer(1, frames, ac.sampleRate);
             const d = buf.getChannelData(0);
@@ -271,17 +285,15 @@
 
     function drawBoltArc() {
         if (!_boltArcCtx) return;
-        const c = _boltArcEl, cx = 35, cy = 35, r = 30;
         _boltArcCtx.clearRect(0, 0, 70, 70);
         if (boltCd <= 0) return;
+        const cx = 35, cy = 35, r = 30;
         const progress = 1 - boltCd / BOLT_CD_MAX;
-        // background ring
         _boltArcCtx.beginPath();
         _boltArcCtx.arc(cx, cy, r, 0, Math.PI*2);
         _boltArcCtx.strokeStyle = 'rgba(0,243,255,0.18)';
         _boltArcCtx.lineWidth = 3;
         _boltArcCtx.stroke();
-        // progress arc
         _boltArcCtx.beginPath();
         _boltArcCtx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + progress * Math.PI*2);
         _boltArcCtx.strokeStyle = '#00f3ff';
@@ -307,11 +319,22 @@
         playBolt();
     }
 
+    document.getElementById('boltBtn').addEventListener('pointerdown', e => {
+        e.stopPropagation(); fireBolt();
+    });
+
+    // ── ENEMY TYPES ──
+    const ENEMY_TYPES = {
+        normal: { color:'#c01835', shadowColor:'#ff2244', strokeColor:'#ff4466', hpMult:1,   spdMult:1,    dmgMult:1,   r:15, wanderInterval:0.5 },
+        fast:   { color:'#ff6b35', shadowColor:'#ff4400', strokeColor:'#ff8855', hpMult:0.5, spdMult:1.8,  dmgMult:1,   r:10, wanderInterval:0.2 },
+        tank:   { color:'#9b59b6', shadowColor:'#7d3c98', strokeColor:'#c39bd3', hpMult:3,   spdMult:0.45, dmgMult:1.5, r:22, wanderInterval:0.5 },
+    };
+
     // ── WAVE DEFINITIONS ──
     const WAVES = [
-        { count: 5,  hp: 30,  speed: 56,  dmg: 7,  r: 15 },
-        { count: 8,  hp: 65,  speed: 74,  dmg: 11, r: 15 },
-        { count: 12, hp: 110, speed: 92,  dmg: 15, r: 15 },
+        { count: 5,  hp: 30,  speed: 56,  dmg: 7,  extras: [] },
+        { count: 8,  hp: 65,  speed: 74,  dmg: 11, extras: ['fast','fast','tank'] },
+        { count: 12, hp: 110, speed: 92,  dmg: 15, extras: ['fast','fast','fast','tank','tank'] },
     ];
 
     // ── PERK POOL ──
@@ -324,16 +347,17 @@
     ];
 
     // ── GAME STATE ──
-    let gState   = 'intro'; // intro | playing | waveclear | perk | over
-    let waveIdx  = 0;
-    let coins    = 0;
+    let gState  = 'intro';
+    let waveIdx = 0;
+    let coins   = 0;
 
-    const player = { x:0, y:0, hp:80, maxHP:80, spd:160, atkR:120, atkCd:0.7, atkTimer:0, dmg:15, r:18 };
+    const player = { x:0, y:0, hp:80, maxHP:80, spd:160, atkR:120, atkCd:0.4, atkTimer:0, dmg:15, r:18 };
 
     let enemies   = [];
     let bullets   = [];
     let particles = [];
     let dmgNums   = [];
+    let aoeRings  = [];
     let eid       = 0;
 
     // ── SCREEN SHAKE ──
@@ -346,11 +370,9 @@
     let joyPointerId = null;
 
     canvas.addEventListener('pointerdown', e => {
-        // Unlock AudioContext on first user gesture
         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         else if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
         if (gState !== 'playing') return;
-        // Joystick activates from any touch point on screen
         if (joyPointerId === null) {
             joyPointerId = e.pointerId;
             JOY.on = true; JOY.cx = e.clientX; JOY.cy = e.clientY;
@@ -370,7 +392,7 @@
         if (e.pointerId !== joyPointerId) return;
         joyPointerId = null;
         JOY.on = false; JOY.dx = 0; JOY.dy = 0; JOY.mag = 0;
-        player.atkTimer = 0; // fire immediately on stop
+        player.atkTimer = 0;
     }
     canvas.addEventListener('pointerup',     releaseJoy);
     canvas.addEventListener('pointercancel', releaseJoy);
@@ -378,18 +400,36 @@
     // ── SPAWN ──
     function spawnWave(def) {
         enemies = [];
+        const typeList = [];
+        const extras = def.extras || [];
+        const normalCount = def.count - extras.length;
+        for (let i = 0; i < normalCount; i++) typeList.push('normal');
+        extras.forEach(t => typeList.push(t));
+        // shuffle
+        for (let i = typeList.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [typeList[i], typeList[j]] = [typeList[j], typeList[i]];
+        }
         for (let i = 0; i < def.count; i++) {
+            const typeName = typeList[i] || 'normal';
+            const td = ENEMY_TYPES[typeName];
             const side = Math.floor(Math.random() * 4);
             const pad  = 50;
             let x, y;
             if      (side === 0) { x = Math.random() * canvas.width;  y = -pad; }
-            else if (side === 1) { x = canvas.width + pad;              y = Math.random() * canvas.height; }
+            else if (side === 1) { x = canvas.width + pad;             y = Math.random() * canvas.height; }
             else if (side === 2) { x = Math.random() * canvas.width;  y = canvas.height + pad; }
-            else                 { x = -pad;                            y = Math.random() * canvas.height; }
+            else                 { x = -pad;                           y = Math.random() * canvas.height; }
+            const hp = Math.round(def.hp * td.hpMult);
             enemies.push({
                 x, y,
-                hp: def.hp, maxHP: def.hp, spd: def.speed, dmg: def.dmg, r: def.r, id: eid++,
-                wanderAngle: 0, wanderTimer: Math.random() * 0.5, // wander: ±30° offset
+                hp, maxHP: hp,
+                spd: def.speed * td.spdMult,
+                dmg: def.dmg * td.dmgMult,
+                r: td.r,
+                id: eid++,
+                type: typeName,
+                wanderAngle: 0, wanderTimer: Math.random() * td.wanderInterval,
                 hitFlash: 0, dmgCooldown: 0
             });
         }
@@ -452,7 +492,7 @@
         waveIdx++;
         if (waveIdx >= WAVES.length) { endGame(true); return; }
         gState = 'playing';
-        bullets = []; dmgNums = [];
+        bullets = []; dmgNums = []; aoeRings = [];
         spawnWave(WAVES[waveIdx]);
         updateHUD();
         announce(`Волна ${waveIdx + 1}`);
@@ -465,16 +505,15 @@
         document.getElementById('endWave').textContent  = won ? WAVES.length : waveIdx + 1;
         document.getElementById('endCoins').textContent = coins;
         document.getElementById('endScreen').classList.add('show');
-        // Buttons appear after 3s so player sees the result first
         const actions = document.getElementById('endActions');
         actions.style.opacity = '0'; actions.style.pointerEvents = 'none';
-        setTimeout(() => { actions.style.opacity = '1'; actions.style.pointerEvents = ''; }, 3000);
+        setTimeout(() => { actions.style.opacity = '1'; actions.style.pointerEvents = ''; }, 1000);
         saveCoins();
     }
 
     function restartGame() {
         document.getElementById('endScreen').classList.remove('show');
-        Object.assign(player, { hp:80, maxHP:80, spd:160, atkR:120, atkCd:0.7, atkTimer:0, dmg:15 });
+        Object.assign(player, { hp:80, maxHP:80, spd:160, atkR:120, atkCd:0.4, atkTimer:0, dmg:15 });
         boltCd = 0;
         const btn = document.getElementById('boltBtn');
         if (btn) btn.classList.remove('cooldown');
@@ -510,15 +549,34 @@
         player.x = canvas.width / 2; player.y = canvas.height / 2;
         player.hp = player.maxHP;
         coins = 0; waveIdx = 0; gState = 'playing';
-        bullets = []; particles = []; dmgNums = [];
+        bullets = []; particles = []; dmgNums = []; aoeRings = [];
         spawnWave(WAVES[0]);
         updateHUD();
         announce('Волна 1');
     }
 
+    // ── DRAW TREE ──
+    function drawTree(x, y, r) {
+        ctx.fillStyle = '#5c3d1e';
+        ctx.fillRect(x - r * 0.2, y - r * 0.3, r * 0.4, r * 0.6);
+        const layers = [
+            { dy: 0,        rs: r },
+            { dy: -r * 0.4, rs: r * 0.75 },
+            { dy: -r * 0.7, rs: r * 0.55 },
+        ];
+        layers.forEach(l => {
+            ctx.shadowColor = '#1a4d10';
+            ctx.shadowBlur = 6;
+            ctx.fillStyle = '#2d6a1d';
+            ctx.beginPath();
+            ctx.arc(x, y + l.dy, l.rs, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        ctx.shadowBlur = 0;
+    }
+
     // ── UPDATE ──
     function update(dt) {
-        // Screen shake
         if (shakeTimer > 0) {
             shakeTimer -= dt;
             shakeX = (Math.random() - 0.5) * 2 * shakeMag;
@@ -526,7 +584,6 @@
             if (shakeTimer <= 0) { shakeX = 0; shakeY = 0; }
         }
 
-        // Bolt cooldown
         if (boltCd > 0) {
             boltCd = Math.max(0, boltCd - dt);
             drawBoltArc();
@@ -536,7 +593,6 @@
             }
         }
 
-        // Player movement
         const moving = JOY.mag > JOY_DEAD;
         if (moving) {
             const nx = JOY.dx / JOY_MAX, ny = JOY.dy / JOY_MAX;
@@ -544,7 +600,6 @@
             player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y + ny * player.spd * dt));
         }
 
-        // Auto-attack: always fires; -30% damage while moving
         player.atkTimer -= dt;
         if (player.atkTimer <= 0 && enemies.length > 0) {
             let nearest = null, nearD = Infinity;
@@ -564,7 +619,6 @@
             }
         }
 
-        // Bullets
         for (let i = bullets.length - 1; i >= 0; i--) {
             const b = bullets[i];
             b.x += b.vx * dt;
@@ -577,10 +631,10 @@
                 const dx = b.x - en.x, dy = b.y - en.y;
                 if (dx*dx + dy*dy < (b.r + en.r) ** 2) {
                     if (b.isBolt) {
-                        // AOE explosion — damage all enemies within 60px
                         burst(b.x, b.y, '#00f3ff', 14);
                         triggerShake(5, 0.3);
                         playHit();
+                        aoeRings.push({ x: b.x, y: b.y, r: 10, maxR: 80, life: 0.4, maxLife: 0.4 });
                         bullets.splice(i, 1);
                         for (let k = enemies.length - 1; k >= 0; k--) {
                             const ae = enemies[k];
@@ -618,12 +672,12 @@
             }
         }
 
-        // Enemies — wander toward player with ±30° random deviation
         enemies.forEach(en => {
+            const td = ENEMY_TYPES[en.type || 'normal'];
             en.wanderTimer -= dt;
             if (en.wanderTimer <= 0) {
-                en.wanderAngle = (Math.random() - 0.5) * (Math.PI / 3); // ±30°
-                en.wanderTimer = 0.5;
+                en.wanderAngle = (Math.random() - 0.5) * (Math.PI / 3);
+                en.wanderTimer = td.wanderInterval;
             }
             en.hitFlash    = Math.max(0, en.hitFlash - dt * 25);
             en.dmgCooldown = Math.max(0, en.dmgCooldown - dt);
@@ -640,7 +694,6 @@
             }
         });
 
-        // Particles
         for (let i = particles.length - 1; i >= 0; i--) {
             const p = particles[i];
             p.life -= dt;
@@ -649,7 +702,6 @@
             p.vx *= 0.90; p.vy *= 0.90;
         }
 
-        // Damage numbers float up
         for (let i = dmgNums.length - 1; i >= 0; i--) {
             const d = dmgNums[i];
             d.life -= dt;
@@ -657,7 +709,13 @@
             d.y -= 45 * dt;
         }
 
-        // Wave clear check
+        for (let i = aoeRings.length - 1; i >= 0; i--) {
+            const ring = aoeRings[i];
+            ring.life -= dt;
+            if (ring.life <= 0) { aoeRings.splice(i, 1); continue; }
+            ring.r += (ring.maxR - ring.r) * dt * 6;
+        }
+
         if (gState === 'playing' && enemies.length === 0) {
             gState = 'waveclear';
             coins += 25;
@@ -674,20 +732,27 @@
         ctx.save();
         ctx.translate(shakeX, shakeY);
 
-        // Background (slightly oversized to hide shake edges)
-        const bg = ctx.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, Math.max(W,H)*0.7);
-        bg.addColorStop(0, '#0b0e1c');
-        bg.addColorStop(1, '#050710');
-        ctx.fillStyle = bg;
+        // Green arena ground
+        ctx.fillStyle = '#0a1a0f';
         ctx.fillRect(-6, -6, W+12, H+12);
 
-        // Subtle grid
-        ctx.strokeStyle = 'rgba(0,243,255,0.025)';
+        // Tile grid
+        ctx.strokeStyle = '#1a2e1a';
         ctx.lineWidth = 1;
-        for (let x = 0; x < W; x += 48) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
-        for (let y = 0; y < H; y += 48) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+        for (let x = -6; x < W+80; x += 80) { ctx.beginPath(); ctx.moveTo(x, -6); ctx.lineTo(x, H+6); ctx.stroke(); }
+        for (let y = -6; y < H+80; y += 80) { ctx.beginPath(); ctx.moveTo(-6, y); ctx.lineTo(W+6, y); ctx.stroke(); }
 
-        // Attack radius (when idle)
+        // Center zone glow
+        const cg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.min(W,H)*0.35);
+        cg.addColorStop(0, '#0f2010');
+        cg.addColorStop(1, 'rgba(15,32,16,0)');
+        ctx.fillStyle = cg;
+        ctx.fillRect(-6, -6, W+12, H+12);
+
+        // Perimeter trees
+        treePositions.forEach(t => drawTree(t.x, t.y, t.r));
+
+        // Attack radius ring
         if (!JOY.on || JOY.mag <= JOY_DEAD) {
             ctx.beginPath();
             ctx.arc(player.x, player.y, player.atkR, 0, Math.PI*2);
@@ -706,37 +771,54 @@
         });
         ctx.globalAlpha = 1;
 
-        // Bullets
+        // AOE rings
+        aoeRings.forEach(ring => {
+            ctx.globalAlpha = (ring.life / ring.maxLife) * 0.75;
+            ctx.strokeStyle = '#00f3ff';
+            ctx.shadowColor = '#00f3ff';
+            ctx.shadowBlur = 18;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI*2);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        });
+        ctx.globalAlpha = 1;
+
+        // Bullets — cyan line arrows
         bullets.forEach(b => {
+            ctx.save();
+            ctx.translate(b.x, b.y);
+            ctx.rotate(Math.atan2(b.vy, b.vx));
+            ctx.lineCap = 'round';
             if (b.isBolt) {
-                ctx.shadowColor = '#00f3ff'; ctx.shadowBlur = 22;
-                ctx.fillStyle = '#00f3ff';
+                ctx.shadowColor = '#00f3ff'; ctx.shadowBlur = 28;
+                ctx.strokeStyle = '#00f3ff'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(12, 0); ctx.stroke();
             } else {
-                ctx.shadowColor = '#ffcc44'; ctx.shadowBlur = 12;
-                ctx.fillStyle = '#ffe566';
+                ctx.shadowColor = '#00f3ff'; ctx.shadowBlur = 14;
+                ctx.strokeStyle = '#00f3ff'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(8, 0); ctx.stroke();
             }
-            ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill();
+            ctx.restore();
         });
         ctx.shadowBlur = 0;
 
         // Enemies
         enemies.forEach(en => {
-            // Hit flash overlay (before body so it blends under the glow)
+            const td = ENEMY_TYPES[en.type || 'normal'];
             if (en.hitFlash > 0) {
                 ctx.globalAlpha = en.hitFlash * 0.85;
                 ctx.fillStyle = '#ff8888';
                 ctx.beginPath(); ctx.arc(en.x, en.y, en.r + 2, 0, Math.PI*2); ctx.fill();
                 ctx.globalAlpha = 1;
             }
-            // Body glow
-            ctx.shadowColor = '#ff2244'; ctx.shadowBlur = 10;
-            ctx.fillStyle = '#c01835';
+            ctx.shadowColor = td.shadowColor; ctx.shadowBlur = 10;
+            ctx.fillStyle = td.color;
             ctx.beginPath(); ctx.arc(en.x, en.y, en.r, 0, Math.PI*2); ctx.fill();
             ctx.shadowBlur = 0;
-            // Outline
-            ctx.strokeStyle = '#ff4466'; ctx.lineWidth = 1.5;
+            ctx.strokeStyle = td.strokeColor; ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.arc(en.x, en.y, en.r, 0, Math.PI*2); ctx.stroke();
-            // HP bar
             const bw = en.r * 2.2, bx = en.x - bw/2, by = en.y - en.r - 9;
             ctx.fillStyle = 'rgba(0,0,0,0.55)';
             ctx.fillRect(bx, by, bw, 4);
@@ -744,22 +826,17 @@
             ctx.fillRect(bx, by, bw * (en.hp / en.maxHP), 4);
         });
 
-        // Player sprite (60×60 clipped circle, fallback to filled arc)
-        const sz = 60;
+        // Player sprite — 60×90 rectangular, no clip
         ctx.save();
         ctx.shadowColor = '#00f3ff'; ctx.shadowBlur = 20;
-        ctx.beginPath(); ctx.arc(player.x, player.y, sz/2, 0, Math.PI*2);
         if (voltImg.complete && voltImg.naturalWidth > 0) {
-            ctx.clip();
-            ctx.drawImage(voltImg, player.x - sz/2, player.y - sz/2, sz, sz);
+            ctx.drawImage(voltImg, player.x - 30, player.y - 45, 60, 90);
         } else {
-            ctx.fillStyle = '#00394d'; ctx.fill();
+            ctx.fillStyle = '#00394d';
+            ctx.fillRect(player.x - 30, player.y - 45, 60, 90);
         }
         ctx.restore();
         ctx.shadowBlur = 0;
-        // Cyan ring around sprite
-        ctx.strokeStyle = '#00f3ff'; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.arc(player.x, player.y, sz/2, 0, Math.PI*2); ctx.stroke();
 
         // Damage numbers
         ctx.font = 'bold 15px Montserrat, sans-serif';
